@@ -1,0 +1,71 @@
+# TestForge — Forge manifest (Custom UI)
+#
+# IMPORTANT: This is a Custom UI app — NOT UI Kit. Custom UI modules reference
+# a static `resource` (the built frontend) + a `resolver` function. Never add
+# `render: native` (that is UI Kit and is mutually exclusive with Custom UI;
+# see DECISIONS.md ADR-001).
+#
+# Call path: frontend (built React app in /build) → `@forge/bridge invoke()`
+# → resolver function → Azure API via `@forge/api fetch()` against the
+# `external.fetch.backend` allowlisted host. The shared internal secret and
+# accountId are attached in the resolver only.
+
+app:
+  # Populated after the first `forge deploy` and pinned in App Service config
+  # as ALLOWED_FORGE_APP_ID.
+  id: ari:cloud:ecosystem::app/REPLACE-AFTER-FIRST-DEPLOY
+
+modules:
+  jira:issuePanel:
+    - key: testforge-issue-panel
+      resource: main
+      resolver:
+        function: resolver
+      title: TestForge
+      icon: https://testforgestorage.blob.core.windows.net/public/testforge-icon.png
+
+  jira:projectPage:
+    - key: testforge-project-page
+      resource: main
+      resolver:
+        function: resolver
+      title: TestForge
+      layout: basic
+      icon: https://testforgestorage.blob.core.windows.net/public/testforge-icon.png
+
+  jira:globalPage:
+    - key: testforge-global-page
+      resource: main
+      resolver:
+        function: resolver
+      title: TestForge Dashboard
+
+  webtrigger:
+    - key: testforge-webhook-receiver
+      function: webhook-handler
+
+  function:
+    - key: resolver
+      handler: index.handler
+    - key: webhook-handler
+      handler: webhookHandler.handler
+
+resources:
+  - key: main
+    # Custom UI: point at the BUILT static frontend (Vite output), not src.
+    # Source lives at static/frontend/src; `vite build` emits to
+    # static/frontend/build, which is what Forge ships.
+    path: static/frontend/build
+    tunnel:
+      port: 3000
+
+permissions:
+  scopes:
+    - read:jira-work
+    - write:jira-work
+    - read:jira-user
+    - read:me
+  external:
+    fetch:
+      backend:
+        - https://testforge-api.azurewebsites.net

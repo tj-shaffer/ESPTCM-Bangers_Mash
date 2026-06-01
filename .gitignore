@@ -1,0 +1,36 @@
+# dependencies
+node_modules/
+
+# env / secrets
+.env
+.env.local
+.env.*.local
+
+# build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Forge
+.forge/
+# Custom UI build output (Vite emits to static/<resource>/build/) — do NOT
+# exclude the static/ source tree, only the build output.
+forge-app/static/*/build/
+forge-app/build/
+
+# Prisma generated client
+api/src/generated/
+api/node_modules/.prisma/
+
+# logs
+*.log
+npm-debug.log*
+
+# editor / OS
+.DS_Store
+.vscode/
+.idea/
+
+# test/coverage
+coverage/
+.nyc_output/

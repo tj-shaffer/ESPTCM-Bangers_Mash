@@ -1,0 +1,45 @@
+name: forge-deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'forge-app/**'
+      - '.github/workflows/forge-deploy.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: forge-app
+    env:
+      FORGE_EMAIL: ${{ secrets.FORGE_EMAIL }}
+      FORGE_API_TOKEN: ${{ secrets.FORGE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: forge-app/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Forge CLI
+        run: npm install -g @forge/cli
+
+      - name: Lint manifest
+        run: forge lint
+
+      - name: Build static frontend
+        run: |
+          if [ -f static/package.json ]; then
+            (cd static && npm ci && npm run build)
+          fi
+
+      - name: Deploy
+        run: forge deploy --environment production --non-interactive

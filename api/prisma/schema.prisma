@@ -1,0 +1,428 @@
+// TestForge — Prisma schema
+//
+// Conventions (see CLAUDE.md / DECISIONS.md):
+//   * All primary keys are UUIDs (String @id @default(uuid())).
+//   * TestCase, TestPlan, VendorChange carry a separate monotonic `displayId`
+//     (Int @default(autoincrement()) @unique) — rendered as TC-XXXX / TP-XXXX /
+//     VC-XXXX in the app layer; permanent and never reused.
+//   * Table names are snake_case via @@map; column names follow the model field.
+//   * Market/region scoping is reserved for Phase 2 — `markets[]` / `marketTag`
+//     fields are stored but not enforced in v1.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- enums ----------
+
+enum Role {
+  SUPER_ADMIN
+  TEST_MANAGER
+  TEST_AUTHOR
+  FIELD_OPERATOR
+  OBSERVER
+}
+
+enum TestType {
+  REGRESSION
+  UAT
+  MANUAL_FUNCTIONAL
+  SMOKE
+  EXPLORATORY
+}
+
+enum Priority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum TestCaseStatus {
+  DRAFT
+  ACTIVE
+  DEPRECATED
+  ARCHIVED
+}
+
+enum VendorCode {
+  PBX
+  LWS
+  CPA
+  HG
+}
+
+enum Environment {
+  DEV
+  TEST
+  STAGING
+  PROD
+}
+
+enum ExecutionStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  PASS
+  FAIL
+  BLOCKED
+  SKIPPED
+}
+
+enum TestPlanType {
+  REGRESSION
+  UAT
+  SMOKE
+  FULL_CYCLE
+}
+
+enum TestPlanStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum VendorChangeSeverity {
+  BREAKING
+  ENHANCEMENT
+  PATCH
+}
+
+enum VendorChangeStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AIAnalysisType {
+  VENDOR_IMPACT
+  COVERAGE_GAP
+  TEST_GENERATION
+  DUPLICATE_DETECTION
+  STEP_CLARITY
+}
+
+// ---------- models ----------
+
+model UserRole {
+  id                 String   @id @default(uuid())
+  atlassianAccountId String   @unique
+  displayName        String
+  email              String?
+  role               Role
+  // Reserved Phase 2 — not enforced in v1:
+  markets            String[] @default([])
+  projectKeys        String[] @default([])
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("user_roles")
+}
+
+model TestFolder {
+  id         String       @id @default(uuid())
+  name       String
+  parentId   String?
+  parent     TestFolder?  @relation("FolderTree", fields: [parentId], references: [id])
+  children   TestFolder[] @relation("FolderTree")
+  vendorCode VendorCode?
+  marketTag  String? // Reserved Phase 2
+  projectKey String
+  order      Int          @default(0)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  testCases TestCase[]
+
+  @@index([projectKey])
+  @@index([parentId])
+  @@map("test_folders")
+}
+
+model TestCase {
+  id                       String         @id @default(uuid())
+  // Human-facing monotonic id — rendered as TC-XXXX. Permanent, never reused.
+  displayId                Int            @unique @default(autoincrement())
+  title                    String
+  objective                String?
+  preconditions            String?
+  testType                 TestType
+  priority                 Priority
+  status                   TestCaseStatus @default(DRAFT)
+  vendors                  VendorCode[]   @default([])
+  markets                  String[]       @default([]) // Reserved Phase 2
+  environments             Environment[]  @default([])
+  folderId                 String
+  folder                   TestFolder     @relation(fields: [folderId], references: [id])
+  ownerAccountId           String
+  version                  Int            @default(1)
+  aiGenerated              Boolean        @default(false)
+  jiraStoryKeys            String[]       @default([])
+  labels                   String[]       @default([])
+  estimatedDurationMinutes Int?
+  createdAt                DateTime       @default(now())
+  updatedAt                DateTime       @updatedAt
+  archivedAt               DateTime?
+
+  steps            TestStep[]
+  versions         TestCaseVersion[]
+  cycleAssignments CycleAssignment[]
+  executions       TestExecution[]
+
+  @@index([folderId])
+  @@index([status])
+  @@index([ownerAccountId])
+  @@map("test_cases")
+}
+
+model TestStep {
+  id                String      @id @default(uuid())
+  testCaseId        String
+  testCase          TestCase    @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  order             Int
+  action            String
+  testData          String?
+  expectedResult    String
+  sharedStepId      String? // Optional reference into the shared-step library
+  sharedStep        SharedStep? @relation(fields: [sharedStepId], references: [id])
+  clarityScore      Int? // AI clarity score 1..10
+  claritySuggestion String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  subSteps TestSubStep[]
+
+  @@index([testCaseId])
+  @@map("test_steps")
+}
+
+model TestSubStep {
+  id             String   @id @default(uuid())
+  testStepId     String
+  testStep       TestStep @relation(fields: [testStepId], references: [id], onDelete: Cascade)
+  order          Int
+  action         String
+  testData       String?
+  expectedResult String
+
+  @@index([testStepId])
+  @@map("test_sub_steps")
+}
+
+model SharedStep {
+  id                 String   @id @default(uuid())
+  title              String
+  action             String
+  testData           String?
+  expectedResult     String
+  createdByAccountId String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  usages TestStep[]
+
+  @@map("shared_steps")
+}
+
+model TestCaseVersion {
+  id                 String   @id @default(uuid())
+  testCaseId         String
+  testCase           TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  versionNumber      Int
+  snapshot           Json // Full TestCase + steps payload at this version
+  changedByAccountId String
+  changeNotes        String?
+  locked             Boolean  @default(false)
+  createdAt          DateTime @default(now())
+
+  @@unique([testCaseId, versionNumber])
+  @@index([testCaseId])
+  @@map("test_case_versions")
+}
+
+model TestPlan {
+  id                String         @id @default(uuid())
+  // Human-facing monotonic id — rendered as TP-XXXX.
+  displayId         Int            @unique @default(autoincrement())
+  name              String
+  description       String?
+  planType          TestPlanType
+  vendorCode        VendorCode?
+  status            TestPlanStatus @default(DRAFT)
+  targetEnvironment Environment
+  jiraEpicKey       String?
+  marketScope       String[]       @default([]) // Reserved Phase 2
+  startDate         DateTime?
+  endDate           DateTime?
+  ownerAccountId    String
+  projectKey        String
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  cycles TestCycle[]
+
+  @@index([projectKey])
+  @@index([status])
+  @@map("test_plans")
+}
+
+model TestCycle {
+  id          String          @id @default(uuid())
+  testPlanId  String
+  testPlan    TestPlan        @relation(fields: [testPlanId], references: [id], onDelete: Cascade)
+  name        String
+  environment Environment
+  // NOTE: ExecutionStatus reused per the brief; a cycle being SKIPPED/PASS is
+  // semantically odd. Candidate for a dedicated CycleStatus enum in Sprint 2.
+  status      ExecutionStatus @default(NOT_STARTED)
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  assignments CycleAssignment[]
+  executions  TestExecution[]
+
+  @@index([testPlanId])
+  @@map("test_cycles")
+}
+
+model CycleAssignment {
+  id                  String    @id @default(uuid())
+  testCycleId         String
+  testCycle           TestCycle @relation(fields: [testCycleId], references: [id], onDelete: Cascade)
+  testCaseId          String
+  testCase            TestCase  @relation(fields: [testCaseId], references: [id])
+  assignedToAccountId String
+  assignedAt          DateTime  @default(now())
+
+  @@index([testCycleId])
+  @@index([assignedToAccountId])
+  @@map("cycle_assignments")
+}
+
+model TestExecution {
+  id                  String          @id @default(uuid())
+  testCycleId         String
+  testCycle           TestCycle       @relation(fields: [testCycleId], references: [id], onDelete: Cascade)
+  testCaseId          String
+  testCase            TestCase        @relation(fields: [testCaseId], references: [id])
+  testCaseVersion     Int // Snapshot of TestCase.version at assignment time
+  assignedToAccountId String
+  executedByAccountId String?
+  status              ExecutionStatus @default(NOT_STARTED)
+  environment         Environment
+  startedAt           DateTime?
+  completedAt         DateTime?
+  durationSeconds     Int?
+  notes               String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  stepResults ExecutionStepResult[]
+  defects     Defect[]
+
+  @@index([testCycleId])
+  @@index([assignedToAccountId])
+  @@index([status])
+  @@map("test_executions")
+}
+
+model ExecutionStepResult {
+  id             String          @id @default(uuid())
+  executionId    String
+  execution      TestExecution   @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  testStepId     String
+  stepOrder      Int
+  status         ExecutionStatus
+  actualResult   String?
+  notes          String?
+  attachmentUrls String[]        @default([])
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([executionId])
+  @@map("execution_step_results")
+}
+
+model Defect {
+  id                  String        @id @default(uuid())
+  executionId         String
+  execution           TestExecution @relation(fields: [executionId], references: [id])
+  jiraIssueKey        String? // DS-XXXX once Jira creation succeeds
+  createdByAI         Boolean       @default(false)
+  duplicateOfKey      String? // Set if AI detected a duplicate at creation time
+  jiraCreationPayload Json?
+  createdAt           DateTime      @default(now())
+
+  @@index([executionId])
+  @@index([jiraIssueKey])
+  @@map("defects")
+}
+
+model VendorChange {
+  id                   String               @id @default(uuid())
+  // Human-facing monotonic id — rendered as VC-XXXX.
+  displayId            Int                  @unique @default(autoincrement())
+  vendorCode           VendorCode
+  versionTag           String
+  summary              String
+  affectedModules      String[]             @default([])
+  severity             VendorChangeSeverity
+  releaseDate          DateTime?
+  status               VendorChangeStatus   @default(DRAFT)
+  jiraIssueKeys        String[]             @default([])
+  publishedAt          DateTime?
+  publishedByAccountId String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  aiAnalyses AIAnalysis[]
+
+  @@index([vendorCode])
+  @@index([status])
+  @@map("vendor_changes")
+}
+
+model AIAnalysis {
+  id                  String         @id @default(uuid())
+  analysisType        AIAnalysisType
+  vendorChangeId      String?
+  vendorChange        VendorChange?  @relation(fields: [vendorChangeId], references: [id])
+  testCaseId          String? // For STEP_CLARITY
+  executionId         String? // For DUPLICATE_DETECTION
+  inputSummary        String
+  outputJson          Json
+  modelVersion        String // Resolved ANTHROPIC_MODEL at call time
+  inputTokens         Int
+  outputTokens        Int
+  reviewedByAccountId String?
+  reviewedAt          DateTime?
+  createdAt           DateTime       @default(now())
+
+  @@index([analysisType])
+  @@index([vendorChangeId])
+  @@map("ai_analyses")
+}
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  actorAccountId String
+  action         String // e.g. "TestCase.create", "TestExecution.update"
+  entityType     String
+  entityId       String
+  before         Json?
+  after          Json?
+  ipAddress      String?
+  createdAt      DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorAccountId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

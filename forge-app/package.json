@@ -1,0 +1,23 @@
+{
+  "name": "@testforge/forge-app",
+  "version": "0.0.1",
+  "private": true,
+  "description": "TestForge Forge Custom UI app — embedded in Jira Cloud.",
+  "scripts": {
+    "lint": "forge lint",
+    "tunnel": "forge tunnel",
+    "deploy": "forge deploy",
+    "install:app": "forge install"
+  },
+  "dependencies": {
+    "@forge/api": "^4.0.0",
+    "@forge/bridge": "^4.0.0",
+    "@forge/resolver": "^1.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

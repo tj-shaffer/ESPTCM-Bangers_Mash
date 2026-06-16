@@ -6,6 +6,7 @@
  */
 
 import type { TestCaseStore } from './store';
+import { jiraCheck } from '../services/jira';
 import type {
   CreateDefectInput,
   CreateFolderInput,
@@ -151,6 +152,9 @@ export async function dispatch(
       if (!res) throw new DispatchError('Execution not found', 404);
       return res;
     }
+
+    case 'jira.check':
+      return jiraCheck();
 
     case 'report.dashboard':
       return store.getDashboard(payload.projectKey as string | undefined);

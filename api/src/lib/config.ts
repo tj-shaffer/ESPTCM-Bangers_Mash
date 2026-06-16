@@ -32,7 +32,13 @@ export interface AppConfig {
   /** Optional integrations — undefined until provisioned. */
   anthropic: { apiKey: string; model: string; cheapModel: string | undefined } | undefined;
   jira:
-    | { baseUrl: string; serviceAccountEmail: string; serviceAccountToken: string; defaultProjectKey: string }
+    | {
+        baseUrl: string;
+        serviceAccountEmail: string;
+        serviceAccountToken: string;
+        defaultProjectKey: string;
+        problemIssueType: string;
+      }
     | undefined;
 }
 
@@ -88,6 +94,7 @@ export function loadConfig(): AppConfig {
           serviceAccountEmail: optionalEnv('JIRA_SERVICE_ACCOUNT_EMAIL') ?? '',
           serviceAccountToken: optionalEnv('JIRA_SERVICE_ACCOUNT_TOKEN') ?? '',
           defaultProjectKey: optionalEnv('JIRA_DEFAULT_PROJECT_KEY') ?? 'DS',
+          problemIssueType: optionalEnv('JIRA_PROBLEM_ISSUE_TYPE') ?? 'Problem',
         }
       : undefined,
   };

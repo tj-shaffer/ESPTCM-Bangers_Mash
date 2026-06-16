@@ -37,6 +37,7 @@ export function RepositoryView() {
   const [creatingCase, setCreatingCase] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showNewFolder, setShowNewFolder] = useState(false);
+  const [folderQuery, setFolderQuery] = useState('');
   const [toast, setToast] = useState<string | null>(null);
 
   const cases = useCases(folder?.id);
@@ -112,9 +113,17 @@ export function RepositoryView() {
             + Folder
           </button>
         </div>
+        <input
+          className="esp-input"
+          style={{ margin: '8px 10px', width: 'calc(100% - 20px)' }}
+          placeholder="Search folders…"
+          value={folderQuery}
+          onChange={(e) => setFolderQuery(e.target.value)}
+        />
         <FolderTree
           nodes={tree.data ?? []}
           selectedId={folder?.id ?? null}
+          filter={folderQuery}
           onSelect={(f) => {
             setFolder(f);
             setSelectedCaseId(null);

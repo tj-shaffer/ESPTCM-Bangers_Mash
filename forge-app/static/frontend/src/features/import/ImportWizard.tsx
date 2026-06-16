@@ -6,7 +6,9 @@ import { useImportCases } from '../../api/repository';
 import {
   FIELD_DEFS,
   buildImportRows,
+  downloadTemplate,
   guessMapping,
+  parseExcelSheet,
   parseSpreadsheet,
   type FieldKey,
   type ParsedSheet,
@@ -24,6 +26,7 @@ interface Props {
 export function ImportWizard({ folderId, folderName, onClose, onImported }: Props) {
   const [stage, setStage] = useState<Stage>('upload');
   const [fileName, setFileName] = useState('');
+  const [file, setFile] = useState<File | null>(null);
   const [sheet, setSheet] = useState<ParsedSheet | null>(null);
   const [mapping, setMapping] = useState<Record<FieldKey, string>>({} as Record<FieldKey, string>);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -31,21 +34,33 @@ export function ImportWizard({ folderId, folderName, onClose, onImported }: Prop
   const fileInput = useRef<HTMLInputElement>(null);
   const importMut = useImportCases();
 
-  const handleFile = async (file: File) => {
+  const handleFile = async (f: File) => {
     setParseError(null);
     try {
-      const parsed = await parseSpreadsheet(file);
-      if (parsed.headers.length === 0) {
+      const parsed = await parseSpreadsheet(f);
+      const multiTab = (parsed.sheetNames?.length ?? 0) > 1;
+      // Single-sheet file with no readable header → genuine error. With multiple
+      // tabs we still advance so the user can pick the right one (e.g. the first
+      // tab is a cover sheet).
+      if (parsed.headers.length === 0 && !multiTab) {
         setParseError('Could not read any columns from that file. Is the first row a header?');
         return;
       }
-      setFileName(file.name);
+      setFile(f);
+      setFileName(f.name);
       setSheet(parsed);
       setMapping(guessMapping(parsed.headers));
       setStage('map');
     } catch (err) {
       setParseError(err instanceof Error ? err.message : 'Failed to parse file');
     }
+  };
+
+  const handleSheetChange = async (name: string) => {
+    if (!file) return;
+    const parsed = await parseExcelSheet(file, name);
+    setSheet(parsed);
+    setMapping(guessMapping(parsed.headers));
   };
 
   const importRows = useMemo(
@@ -120,14 +135,69 @@ export function ImportWizard({ folderId, folderName, onClose, onImported }: Prop
             }}
           />
           {parseError ? <p className="esp-error" style={{ marginTop: 12 }}>{parseError}</p> : null}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              marginTop: 16,
+              padding: '12px 14px',
+              borderRadius: 8,
+              background: 'var(--esp-surface-sunken, rgba(0,0,0,0.03))',
+            }}
+          >
+            <span style={{ fontSize: 18 }}>📄</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--esp-ink)' }}>
+                Not sure how to format your file?
+              </div>
+              <div className="esp-muted" style={{ fontSize: 12 }}>
+                Download the standard template, fill it in Excel, then upload it — columns map automatically.
+              </div>
+            </div>
+            <button className="esp-btn esp-btn-secondary" onClick={() => downloadTemplate()}>
+              ⬇ Template
+            </button>
+          </div>
           <p className="esp-muted" style={{ fontSize: 12, marginTop: 14 }}>
-            Your spreadsheet's columns don't need specific names — you'll map them to Bangers &amp; Mash fields on the next step.
+            Your columns don't have to match the template — you'll map them to Bangers &amp; Mash fields on the next step.
           </p>
         </>
       )}
 
       {stage === 'map' && sheet && (
         <>
+          {sheet.sheetNames && sheet.sheetNames.length > 1 ? (
+            <div
+              style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}
+            >
+              <label className="esp-label" style={{ marginBottom: 0 }}>
+                Worksheet tab
+              </label>
+              <select
+                className="esp-select"
+                value={sheet.activeSheet ?? ''}
+                onChange={(e) => void handleSheetChange(e.target.value)}
+              >
+                {sheet.sheetNames.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+              <span className="esp-muted" style={{ fontSize: 12 }}>
+                This workbook has {sheet.sheetNames.length} tabs — pick the one to import.
+              </span>
+            </div>
+          ) : null}
+
+          {sheet.headers.length === 0 ? (
+            <p className="esp-error">
+              No columns found on this tab{sheet.activeSheet ? ` (“${sheet.activeSheet}”)` : ''}. Pick another worksheet
+              tab above, or make sure the first row contains headers.
+            </p>
+          ) : (
+            <>
           <p className="esp-muted" style={{ fontSize: 12, marginTop: 0 }}>
             <strong>{fileName}</strong> · {sheet.rows.length} rows, {sheet.headers.length} columns. Match your columns to
             Bangers &amp; Mash fields:
@@ -193,6 +263,8 @@ export function ImportWizard({ folderId, folderName, onClose, onImported }: Prop
           {importMut.isError ? (
             <p className="esp-error" style={{ marginTop: 10 }}>{(importMut.error as Error).message}</p>
           ) : null}
+            </>
+          )}
         </>
       )}
 

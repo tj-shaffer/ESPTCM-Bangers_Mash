@@ -189,6 +189,7 @@ export interface DefectView {
   description?: string;
   severity: Priority;
   jiraIssueKey?: string;
+  jiraUrl?: string;
   createdAt: string;
 }
 

@@ -4,7 +4,14 @@
 import { useState } from 'react';
 import Spinner from '@atlaskit/spinner';
 import { Modal } from '../../components/ui';
-import { useCompleteExecution, useCreateDefect, useExecution, useSetStepResult } from '../../api/runs';
+import {
+  useCompleteExecution,
+  useCreateDefect,
+  useExecution,
+  useJiraOptions,
+  useLinkDefectToJira,
+  useSetStepResult,
+} from '../../api/runs';
 import { EXEC_STATUS_LABEL, PRIORITIES, tcId } from '../../domain/types';
 import type { ExecutionDetail, ExecutionStatus, Priority } from '../../domain/types';
 
@@ -126,6 +133,11 @@ function DefectsPanel({ exec, runId }: { exec: ExecutionDetail; runId: string })
   const [severity, setSeverity] = useState<Priority>('HIGH');
   const [description, setDescription] = useState('');
   const createDefect = useCreateDefect(runId);
+  const linkJira = useLinkDefectToJira(runId);
+  const jiraOpts = useJiraOptions();
+  const [typeByDefect, setTypeByDefect] = useState<Record<string, string>>({});
+  const jiraTypes = jiraOpts.data?.issueTypes ?? [];
+  const jiraReady = !!jiraOpts.data?.configured && jiraTypes.length > 0;
 
   const submit = () => {
     if (!summary.trim()) return;
@@ -159,7 +171,39 @@ function DefectsPanel({ exec, runId }: { exec: ExecutionDetail; runId: string })
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className={`esp-badge esp-prio-${d.severity}`}>{d.severity}</span>
             <strong style={{ fontSize: 13 }}>{d.summary}</strong>
-            {d.jiraIssueKey ? <span className="esp-badge esp-badge-soft">{d.jiraIssueKey}</span> : null}
+            <span style={{ marginLeft: 'auto' }}>
+              {d.jiraIssueKey ? (
+                d.jiraUrl ? (
+                  <a className="esp-badge esp-badge-soft" href={d.jiraUrl} target="_blank" rel="noreferrer">
+                    {d.jiraIssueKey} ↗
+                  </a>
+                ) : (
+                  <span className="esp-badge esp-badge-soft">{d.jiraIssueKey}</span>
+                )
+              ) : jiraReady ? (
+                <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                  <select
+                    className="esp-select"
+                    style={{ width: 'auto', padding: '4px 8px', fontSize: 12 }}
+                    value={typeByDefect[d.id] ?? jiraTypes[0] ?? ''}
+                    onChange={(e) => setTypeByDefect((m) => ({ ...m, [d.id]: e.target.value }))}
+                  >
+                    {jiraTypes.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="esp-btn esp-btn-secondary"
+                    onClick={() => linkJira.mutate({ defectId: d.id, issueType: typeByDefect[d.id] ?? jiraTypes[0] })}
+                    disabled={linkJira.isPending}
+                  >
+                    {linkJira.isPending && linkJira.variables?.defectId === d.id ? 'Creating…' : 'Create Jira issue'}
+                  </button>
+                </span>
+              ) : null}
+            </span>
           </div>
           {d.description ? (
             <div className="esp-muted" style={{ fontSize: 12, marginTop: 4 }}>
@@ -168,6 +212,10 @@ function DefectsPanel({ exec, runId }: { exec: ExecutionDetail; runId: string })
           ) : null}
         </div>
       ))}
+
+      {linkJira.isError ? (
+        <p className="esp-error" style={{ fontSize: 12 }}>{(linkJira.error as Error).message}</p>
+      ) : null}
 
       {open ? (
         <div className="esp-rstep" style={{ background: 'var(--esp-powder-soft)' }}>

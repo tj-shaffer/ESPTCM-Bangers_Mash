@@ -105,6 +105,26 @@ export function useCreateDefect(runId: string) {
   });
 }
 
+export function useJiraOptions() {
+  return useQuery({
+    queryKey: ['jiraOptions'],
+    queryFn: () => invokeResolver<{ configured: boolean; issueTypes: string[] }>('jira.options'),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useLinkDefectToJira(runId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { defectId: string; issueType?: string }) =>
+      invokeResolver<ExecutionDetail>('defect.toJira', { id: vars.defectId, issueType: vars.issueType }),
+    onSuccess: (exec) => {
+      qc.setQueryData(keys.exec(exec.id), exec);
+      qc.invalidateQueries({ queryKey: keys.run(runId) });
+    },
+  });
+}
+
 export function useDashboard() {
   return useQuery({
     queryKey: keys.dashboard,

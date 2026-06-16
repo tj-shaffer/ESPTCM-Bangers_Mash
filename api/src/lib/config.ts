@@ -38,6 +38,7 @@ export interface AppConfig {
         serviceAccountToken: string;
         defaultProjectKey: string;
         problemIssueType: string;
+        issueTypes: string[];
       }
     | undefined;
 }
@@ -74,6 +75,12 @@ export function loadConfig(): AppConfig {
 
   const anthropicApiKey = optionalEnv('ANTHROPIC_API_KEY');
   const jiraBaseUrl = optionalEnv('JIRA_BASE_URL');
+  // JIRA_PROBLEM_ISSUE_TYPE may be a comma-separated list (e.g. "Task,Story") —
+  // the offered types; the first is the default.
+  const jiraIssueTypes = (optionalEnv('JIRA_PROBLEM_ISSUE_TYPE') ?? 'Task')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   cached = {
     nodeEnv,
@@ -94,7 +101,8 @@ export function loadConfig(): AppConfig {
           serviceAccountEmail: optionalEnv('JIRA_SERVICE_ACCOUNT_EMAIL') ?? '',
           serviceAccountToken: optionalEnv('JIRA_SERVICE_ACCOUNT_TOKEN') ?? '',
           defaultProjectKey: optionalEnv('JIRA_DEFAULT_PROJECT_KEY') ?? 'DS',
-          problemIssueType: optionalEnv('JIRA_PROBLEM_ISSUE_TYPE') ?? 'Problem',
+          problemIssueType: jiraIssueTypes[0] ?? 'Task',
+          issueTypes: jiraIssueTypes,
         }
       : undefined,
   };

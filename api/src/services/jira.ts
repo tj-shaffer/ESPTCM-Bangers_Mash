@@ -37,6 +37,14 @@ export function jiraConfigured(): boolean {
   return !!jiraCfg();
 }
 
+/** The issue types offered for filing (from JIRA_PROBLEM_ISSUE_TYPE). No network call.
+ *  Sub-tasks are excluded — they require a parent and can't be created standalone. */
+export function jiraOptions(): { configured: boolean; issueTypes: string[] } {
+  const cfg = jiraCfg();
+  const types = (cfg?.issueTypes ?? []).filter((t) => t.toLowerCase().replace(/[-\s]/g, '') !== 'subtask');
+  return { configured: !!cfg, issueTypes: types };
+}
+
 export async function jiraCheck(): Promise<JiraCheckResult> {
   const cfg = jiraCfg();
   const base = { projectKey: cfg?.defaultProjectKey ?? '', configuredIssueType: cfg?.problemIssueType ?? '' };
@@ -126,10 +134,17 @@ export async function jiraCreateProblem(input: {
   summary: string;
   description?: string;
   severity?: string;
+  issueType?: string;
 }): Promise<{ key: string; url: string }> {
   const cfg = jiraCfg();
   if (!cfg) throw new Error('Jira is not configured');
   const root = cfg.baseUrl.replace(/\/$/, '');
+  const headers = authHeaders();
+
+  // Reporter is required on PLOT's issue types — use the token owner.
+  const meRes = await fetch(`${root}/rest/api/3/myself`, { headers });
+  if (!meRes.ok) throw new Error(`Jira auth failed (${meRes.status}) — check the token.`);
+  const accountId = ((await meRes.json()) as { accountId?: string }).accountId;
 
   const descText = [input.description, input.severity ? `Severity: ${input.severity}` : '', 'Filed from Bangers & Mash.']
     .filter(Boolean)
@@ -142,13 +157,14 @@ export async function jiraCreateProblem(input: {
 
   const res = await fetch(`${root}/rest/api/3/issue`, {
     method: 'POST',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       fields: {
         project: { key: cfg.defaultProjectKey },
-        issuetype: { name: cfg.problemIssueType },
+        issuetype: { name: input.issueType ?? cfg.problemIssueType },
         summary: input.summary.slice(0, 250),
         description: adf,
+        ...(accountId ? { reporter: { id: accountId } } : {}),
       },
     }),
   });

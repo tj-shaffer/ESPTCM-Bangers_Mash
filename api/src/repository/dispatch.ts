@@ -6,7 +6,7 @@
  */
 
 import type { TestCaseStore } from './store';
-import { jiraCheck } from '../services/jira';
+import { jiraCheck, jiraConfigured, jiraCreateProblem, jiraOptions } from '../services/jira';
 import type {
   CreateDefectInput,
   CreateFolderInput,
@@ -155,6 +155,29 @@ export async function dispatch(
 
     case 'jira.check':
       return jiraCheck();
+
+    case 'jira.options':
+      return jiraOptions();
+
+    case 'defect.toJira': {
+      const id = payload.id as string | undefined;
+      if (!id) throw new DispatchError('Defect id is required');
+      const defect = await store.getDefect(id);
+      if (!defect) throw new DispatchError('Defect not found', 404);
+      if (!jiraConfigured()) throw new DispatchError('Jira is not configured', 400);
+      if (defect.jiraIssueKey) return store.getExecution(defect.executionId); // already linked — idempotent
+      try {
+        const { key, url } = await jiraCreateProblem({
+          summary: defect.summary,
+          description: defect.description,
+          severity: defect.severity,
+          issueType: payload.issueType as string | undefined,
+        });
+        return store.attachJiraKey(id, key, { url });
+      } catch (err) {
+        throw new DispatchError(err instanceof Error ? err.message : 'Jira create failed', 502);
+      }
+    }
 
     case 'report.dashboard':
       return store.getDashboard(payload.projectKey as string | undefined);

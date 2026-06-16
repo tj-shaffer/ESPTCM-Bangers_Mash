@@ -7,16 +7,39 @@ interface Props {
   nodes: FolderNode[];
   selectedId: string | null;
   onSelect: (folder: FolderNode) => void;
+  /** Optional name filter; matches folders or their descendants and auto-expands. */
+  filter?: string;
 }
 
-export function FolderTree({ nodes, selectedId, onSelect }: Props) {
+/** Prune the tree to folders matching `q` (by name) or with a matching descendant. */
+function filterTree(nodes: FolderNode[], q: string): FolderNode[] {
+  const out: FolderNode[] = [];
+  for (const n of nodes) {
+    const nameHit = n.name.toLowerCase().includes(q);
+    const kids = filterTree(n.children, q);
+    if (nameHit || kids.length > 0) {
+      // A direct name hit keeps its full subtree so the user can navigate in;
+      // an ancestor-only hit keeps just the matching path.
+      out.push({ ...n, children: nameHit ? n.children : kids });
+    }
+  }
+  return out;
+}
+
+export function FolderTree({ nodes, selectedId, onSelect, filter }: Props) {
+  const q = (filter ?? '').trim().toLowerCase();
+  const visible = q ? filterTree(nodes, q) : nodes;
+
   if (nodes.length === 0) {
     return <div className="esp-empty">No folders yet.</div>;
   }
+  if (visible.length === 0) {
+    return <div className="esp-empty">No folders match “{filter}”.</div>;
+  }
   return (
     <div className="esp-tree">
-      {nodes.map((n) => (
-        <FolderRow key={n.id} node={n} depth={0} selectedId={selectedId} onSelect={onSelect} />
+      {visible.map((n) => (
+        <FolderRow key={n.id} node={n} depth={0} selectedId={selectedId} onSelect={onSelect} forceOpen={q.length > 0} />
       ))}
     </div>
   );
@@ -27,14 +50,20 @@ function FolderRow({
   depth,
   selectedId,
   onSelect,
+  forceOpen,
 }: {
   node: FolderNode;
   depth: number;
   selectedId: string | null;
   onSelect: (folder: FolderNode) => void;
+  forceOpen: boolean;
 }) {
-  const [open, setOpen] = useState(depth === 0);
+  // Folders start collapsed so the sidebar reads as a short list of applications
+  // (PlotBox, Lawson, …); expand one to reveal its test cases. An active filter
+  // force-expands so matches are visible.
+  const [open, setOpen] = useState(false);
   const hasChildren = node.children.length > 0;
+  const isOpen = forceOpen || open;
 
   return (
     <>
@@ -44,7 +73,7 @@ function FolderRow({
         onClick={() => onSelect(node)}
       >
         <span
-          className={`esp-tree-caret${open ? ' open' : ''}`}
+          className={`esp-tree-caret${isOpen ? ' open' : ''}`}
           onClick={(e) => {
             e.stopPropagation();
             if (hasChildren) setOpen((v) => !v);
@@ -53,7 +82,7 @@ function FolderRow({
         >
           ▶
         </span>
-        <span aria-hidden>{hasChildren ? (open ? '📂' : '📁') : '📄'}</span>
+        <span aria-hidden>{hasChildren ? (isOpen ? '📂' : '📁') : '📄'}</span>
         <span className="esp-tree-name" title={node.name}>
           {node.name}
         </span>
@@ -62,9 +91,16 @@ function FolderRow({
         ) : null}
         {node.testCaseCount > 0 ? <span className="esp-tree-count">{node.testCaseCount}</span> : null}
       </div>
-      {open &&
+      {isOpen &&
         node.children.map((c) => (
-          <FolderRow key={c.id} node={c} depth={depth + 1} selectedId={selectedId} onSelect={onSelect} />
+          <FolderRow
+            key={c.id}
+            node={c}
+            depth={depth + 1}
+            selectedId={selectedId}
+            onSelect={onSelect}
+            forceOpen={forceOpen}
+          />
         ))}
     </>
   );

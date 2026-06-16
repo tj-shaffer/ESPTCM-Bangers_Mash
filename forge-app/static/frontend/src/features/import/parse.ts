@@ -16,6 +16,10 @@ import type {
 export interface ParsedSheet {
   headers: string[];
   rows: Record<string, string>[];
+  /** All worksheet/tab names (Excel only). Empty/absent for CSV. */
+  sheetNames?: string[];
+  /** Which worksheet these headers/rows came from (Excel only). */
+  activeSheet?: string;
 }
 
 export type FieldKey =
@@ -58,6 +62,11 @@ export async function parseSpreadsheet(file: File): Promise<ParsedSheet> {
   return parseExcel(file);
 }
 
+/** Re-parse a specific worksheet/tab from an Excel workbook the user already picked. */
+export function parseExcelSheet(file: File, sheetName: string): Promise<ParsedSheet> {
+  return parseExcel(file, sheetName);
+}
+
 function parseCsv(file: File): Promise<ParsedSheet> {
   return new Promise((resolve, reject) => {
     Papa.parse<Record<string, string>>(file, {
@@ -72,18 +81,20 @@ function parseCsv(file: File): Promise<ParsedSheet> {
   });
 }
 
-async function parseExcel(file: File): Promise<ParsedSheet> {
+async function parseExcel(file: File, sheetName?: string): Promise<ParsedSheet> {
   // Loaded on demand — keeps SheetJS (~400 KB) out of the initial bundle.
   const XLSX = await import('xlsx');
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array' });
-  const firstSheetName = wb.SheetNames[0];
-  if (!firstSheetName) return { headers: [], rows: [] };
-  const sheet = wb.Sheets[firstSheetName];
-  if (!sheet) return { headers: [], rows: [] };
+  const sheetNames = wb.SheetNames;
+  // Honor a requested tab (multi-tab workbooks); otherwise default to the first.
+  const target = sheetName && sheetNames.includes(sheetName) ? sheetName : sheetNames[0];
+  if (!target) return { headers: [], rows: [], sheetNames };
+  const sheet = wb.Sheets[target];
+  if (!sheet) return { headers: [], rows: [], sheetNames, activeSheet: target };
   const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: '', raw: false });
   const headers = rows.length > 0 ? Object.keys(rows[0]!).filter((h) => h.trim().length > 0) : [];
-  return { headers, rows };
+  return { headers, rows, sheetNames, activeSheet: target };
 }
 
 /** Best-guess initial mapping from header names. */
@@ -173,4 +184,51 @@ export function buildImportRows(sheet: ParsedSheet, mapping: Record<FieldKey, st
       };
     })
     .filter((r): r is ImportedCaseRow => r !== null);
+}
+
+// ---------- downloadable import template ----------
+
+/**
+ * Standard column headers for the import template. Chosen so `guessMapping`
+ * auto-maps every column — a file built from this template imports with no
+ * manual mapping needed.
+ */
+export const TEMPLATE_HEADERS = [
+  'Title',
+  'Objective',
+  'Preconditions',
+  'Test Type',
+  'Priority',
+  'Vendors',
+  'Steps',
+  'Expected Results',
+] as const;
+
+const TEMPLATE_EXAMPLE_ROW: Record<(typeof TEMPLATE_HEADERS)[number], string> = {
+  'Title': 'PlotBox — apply discount threshold at checkout',
+  'Objective': 'Verify a configured discount threshold applies to the order total',
+  'Preconditions': 'Discount management configured; a test order exists',
+  'Test Type': 'Regression',
+  'Priority': 'High',
+  'Vendors': 'PBX',
+  'Steps': 'Open the test order\nApply the discount threshold\nReview the order total',
+  'Expected Results': 'Order opens\nThreshold is accepted\nTotal reflects the discount',
+};
+
+/** Build the standard import template as a CSV string (header row + one example). */
+export function buildTemplateCsv(): string {
+  return Papa.unparse([TEMPLATE_EXAMPLE_ROW], { columns: TEMPLATE_HEADERS as unknown as string[] });
+}
+
+/** Trigger a browser download of the standard import template. */
+export function downloadTemplate(filename = 'testforge-import-template.csv'): void {
+  const blob = new Blob([buildTemplateCsv()], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }

@@ -3,7 +3,7 @@
  */
 
 import { prisma } from '../db/prisma';
-import { DEFAULT_PROJECT, type TestCaseStore } from './store';
+import { DEFAULT_PROJECT, type DefectRecord, type TestCaseStore } from './store';
 import type {
   CreateDefectInput,
   CreateFolderInput,
@@ -510,6 +510,7 @@ export class PrismaStore implements TestCaseStore {
           description: df.description ?? undefined,
           severity: df.severity as DefectView['severity'],
           jiraIssueKey: df.jiraIssueKey ?? undefined,
+          jiraUrl: (df.jiraCreationPayload as { url?: string } | null)?.url ?? undefined,
           createdAt: df.createdAt.toISOString(),
         }),
       ),
@@ -529,6 +530,35 @@ export class PrismaStore implements TestCaseStore {
       },
     });
     return this.getExecution(executionId);
+  }
+
+  async getDefect(id: string): Promise<DefectRecord | null> {
+    const d = await prisma.defect.findUnique({
+      where: { id },
+      select: { id: true, executionId: true, summary: true, description: true, severity: true, jiraIssueKey: true },
+    });
+    if (!d) return null;
+    return {
+      id: d.id,
+      executionId: d.executionId,
+      summary: d.summary,
+      description: d.description ?? undefined,
+      severity: d.severity as Priority,
+      jiraIssueKey: d.jiraIssueKey ?? undefined,
+    };
+  }
+
+  async attachJiraKey(
+    defectId: string,
+    jiraIssueKey: string,
+    payload?: Record<string, string>,
+  ): Promise<ExecutionDetail | null> {
+    const updated = await prisma.defect.update({
+      where: { id: defectId },
+      data: { jiraIssueKey, jiraCreationPayload: payload ?? undefined },
+      select: { executionId: true },
+    });
+    return this.getExecution(updated.executionId);
   }
 
   async setStepResult(

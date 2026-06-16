@@ -15,6 +15,7 @@ import type {
   FolderNode,
   ImportResult,
   ImportedCaseRow,
+  Priority,
   StepResultPatch,
   TestCase,
   TestCaseSummary,
@@ -23,6 +24,15 @@ import type {
   TestRunSummary,
   UpdateTestCaseInput,
 } from '../domain/types';
+
+export interface DefectRecord {
+  id: string;
+  executionId: string;
+  summary: string;
+  description?: string;
+  severity: Priority;
+  jiraIssueKey?: string;
+}
 
 export interface TestCaseStore {
   getFolderTree(projectKey?: string): Promise<FolderNode[]>;
@@ -44,6 +54,8 @@ export interface TestCaseStore {
   setStepResult(executionId: string, stepResultId: string, patch: StepResultPatch): Promise<ExecutionDetail | null>;
   completeExecution(executionId: string, ownerAccountId: string): Promise<ExecutionDetail | null>;
   createDefect(executionId: string, input: CreateDefectInput, ownerAccountId: string): Promise<ExecutionDetail | null>;
+  getDefect(id: string): Promise<DefectRecord | null>;
+  attachJiraKey(defectId: string, jiraIssueKey: string, payload?: Record<string, string>): Promise<ExecutionDetail | null>;
   getDashboard(projectKey?: string): Promise<DashboardData>;
 }
 

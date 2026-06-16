@@ -1,0 +1,647 @@
+/**
+ * Neon/Postgres-backed implementation of TestCaseStore (via Prisma).
+ */
+
+import { prisma } from '../db/prisma';
+import { DEFAULT_PROJECT, type TestCaseStore } from './store';
+import type {
+  CreateDefectInput,
+  CreateFolderInput,
+  CreateRunInput,
+  CreateTestCaseInput,
+  DashboardData,
+  DefectView,
+  Environment,
+  EnvironmentResult,
+  ExecutionDetail,
+  ExecutionStatus,
+  ExecutionStepResultView,
+  FolderNode,
+  ImportResult,
+  ImportedCaseRow,
+  Priority,
+  RunExecutionSummary,
+  StepResultPatch,
+  TestCase,
+  TestCaseStatus,
+  TestCaseSummary,
+  TestFolder,
+  TestRunDetail,
+  TestRunSummary,
+  TestStep,
+  TestStepInput,
+  TestType,
+  UpdateTestCaseInput,
+  VendorCode,
+  VendorResult,
+} from '../domain/types';
+
+const PILOT_PLAN_NAME = '__pilot_runs__';
+
+function rollup(statuses: ExecutionStatus[]): ExecutionStatus {
+  if (statuses.length === 0) return 'NOT_STARTED';
+  if (statuses.includes('FAIL')) return 'FAIL';
+  if (statuses.includes('BLOCKED')) return 'BLOCKED';
+  if (statuses.every((s) => s === 'NOT_STARTED')) return 'NOT_STARTED';
+  if (statuses.every((s) => s === 'PASS' || s === 'SKIPPED')) return 'PASS';
+  return 'IN_PROGRESS';
+}
+
+type FolderRow = {
+  id: string;
+  name: string;
+  parentId: string | null;
+  vendorCode: string | null;
+  projectKey: string;
+  order: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type StepRow = {
+  id: string;
+  order: number;
+  action: string;
+  testData: string | null;
+  expectedResult: string;
+};
+
+type CaseRow = {
+  id: string;
+  displayId: number;
+  title: string;
+  objective: string | null;
+  preconditions: string | null;
+  testType: string;
+  priority: string;
+  status: string;
+  vendors: string[];
+  environments: string[];
+  folderId: string;
+  ownerAccountId: string;
+  version: number;
+  labels: string[];
+  estimatedDurationMinutes: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+  steps?: StepRow[];
+};
+
+function mapFolder(f: FolderRow): TestFolder {
+  return {
+    id: f.id,
+    name: f.name,
+    parentId: f.parentId,
+    vendorCode: (f.vendorCode as VendorCode | null) ?? undefined,
+    projectKey: f.projectKey,
+    order: f.order,
+    createdAt: f.createdAt.toISOString(),
+    updatedAt: f.updatedAt.toISOString(),
+  };
+}
+
+function mapStep(s: StepRow): TestStep {
+  return {
+    id: s.id,
+    order: s.order,
+    action: s.action,
+    testData: s.testData ?? undefined,
+    expectedResult: s.expectedResult,
+  };
+}
+
+function mapCase(c: CaseRow): TestCase {
+  return {
+    id: c.id,
+    displayId: c.displayId,
+    title: c.title,
+    objective: c.objective ?? undefined,
+    preconditions: c.preconditions ?? undefined,
+    testType: c.testType as TestType,
+    priority: c.priority as Priority,
+    status: c.status as TestCaseStatus,
+    vendors: c.vendors as VendorCode[],
+    environments: c.environments as Environment[],
+    folderId: c.folderId,
+    ownerAccountId: c.ownerAccountId,
+    version: c.version,
+    labels: c.labels,
+    estimatedDurationMinutes: c.estimatedDurationMinutes ?? undefined,
+    steps: (c.steps ?? []).map(mapStep),
+    createdAt: c.createdAt.toISOString(),
+    updatedAt: c.updatedAt.toISOString(),
+  };
+}
+
+function stepCreateData(steps: TestStepInput[] | undefined) {
+  return (steps ?? [])
+    .filter((s) => (s.action ?? '').trim() || (s.expectedResult ?? '').trim())
+    .map((s, i) => ({
+      order: i + 1,
+      action: s.action ?? '',
+      testData: s.testData?.trim() ? s.testData : null,
+      expectedResult: s.expectedResult ?? '',
+    }));
+}
+
+export class PrismaStore implements TestCaseStore {
+  async getFolderTree(projectKey = DEFAULT_PROJECT): Promise<FolderNode[]> {
+    const folders = await prisma.testFolder.findMany({
+      where: { projectKey },
+      include: { _count: { select: { testCases: true } } },
+    });
+
+    const nodeById = new Map<string, FolderNode>();
+    for (const f of folders) {
+      nodeById.set(f.id, {
+        ...mapFolder(f as unknown as FolderRow),
+        children: [],
+        testCaseCount: (f as unknown as { _count: { testCases: number } })._count.testCases,
+      });
+    }
+
+    const roots: FolderNode[] = [];
+    for (const node of nodeById.values()) {
+      const parent = node.parentId ? nodeById.get(node.parentId) : undefined;
+      if (parent) parent.children.push(node);
+      else roots.push(node);
+    }
+
+    const sortRec = (nodes: FolderNode[]): void => {
+      nodes.sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+      nodes.forEach((n) => sortRec(n.children));
+    };
+    sortRec(roots);
+    return roots;
+  }
+
+  async createFolder(input: CreateFolderInput): Promise<TestFolder> {
+    const projectKey = input.projectKey ?? DEFAULT_PROJECT;
+    const siblingCount = await prisma.testFolder.count({
+      where: { projectKey, parentId: input.parentId ?? null },
+    });
+    const created = await prisma.testFolder.create({
+      data: {
+        name: input.name.trim() || 'Untitled folder',
+        parentId: input.parentId ?? null,
+        vendorCode: input.vendorCode ?? null,
+        projectKey,
+        order: siblingCount,
+      },
+    });
+    return mapFolder(created as unknown as FolderRow);
+  }
+
+  async listCases(folderId?: string): Promise<TestCaseSummary[]> {
+    const cases = await prisma.testCase.findMany({
+      where: folderId ? { folderId } : undefined,
+      include: { _count: { select: { steps: true } } },
+      orderBy: { displayId: 'asc' },
+    });
+    return cases.map((c) => {
+      const row = c as unknown as CaseRow & { _count: { steps: number } };
+      return {
+        id: row.id,
+        displayId: row.displayId,
+        title: row.title,
+        testType: row.testType as TestType,
+        priority: row.priority as Priority,
+        status: row.status as TestCaseStatus,
+        vendors: row.vendors as VendorCode[],
+        folderId: row.folderId,
+        stepCount: row._count.steps,
+        updatedAt: row.updatedAt.toISOString(),
+      };
+    });
+  }
+
+  async getCase(id: string): Promise<TestCase | null> {
+    const found = await prisma.testCase.findUnique({
+      where: { id },
+      include: { steps: { orderBy: { order: 'asc' } } },
+    });
+    return found ? mapCase(found as unknown as CaseRow) : null;
+  }
+
+  async createCase(input: CreateTestCaseInput, ownerAccountId: string): Promise<TestCase> {
+    const created = await prisma.testCase.create({
+      data: {
+        title: input.title.trim() || 'Untitled test case',
+        objective: input.objective?.trim() ? input.objective : null,
+        preconditions: input.preconditions?.trim() ? input.preconditions : null,
+        testType: (input.testType ?? 'MANUAL_FUNCTIONAL') as TestType,
+        priority: (input.priority ?? 'MEDIUM') as Priority,
+        status: (input.status ?? 'DRAFT') as TestCaseStatus,
+        vendors: input.vendors ?? [],
+        environments: input.environments ?? ['TEST'],
+        folderId: input.folderId,
+        ownerAccountId,
+        labels: input.labels ?? [],
+        estimatedDurationMinutes: input.estimatedDurationMinutes ?? null,
+        steps: { create: stepCreateData(input.steps) },
+      },
+      include: { steps: { orderBy: { order: 'asc' } } },
+    });
+    return mapCase(created as unknown as CaseRow);
+  }
+
+  async updateCase(id: string, patch: UpdateTestCaseInput): Promise<TestCase | null> {
+    const existing = await prisma.testCase.findUnique({ where: { id } });
+    if (!existing) return null;
+
+    const data: Record<string, unknown> = { version: { increment: 1 } };
+    if (patch.title !== undefined) data.title = patch.title.trim() || existing.title;
+    if (patch.objective !== undefined) data.objective = patch.objective?.trim() ? patch.objective : null;
+    if (patch.preconditions !== undefined)
+      data.preconditions = patch.preconditions?.trim() ? patch.preconditions : null;
+    if (patch.testType !== undefined) data.testType = patch.testType;
+    if (patch.priority !== undefined) data.priority = patch.priority;
+    if (patch.status !== undefined) data.status = patch.status;
+    if (patch.vendors !== undefined) data.vendors = patch.vendors;
+    if (patch.environments !== undefined) data.environments = patch.environments;
+    if (patch.folderId !== undefined) data.folderId = patch.folderId;
+    if (patch.labels !== undefined) data.labels = patch.labels;
+    if (patch.estimatedDurationMinutes !== undefined)
+      data.estimatedDurationMinutes = patch.estimatedDurationMinutes ?? null;
+    if (patch.steps !== undefined) {
+      data.steps = { deleteMany: {}, create: stepCreateData(patch.steps) };
+    }
+
+    const updated = await prisma.testCase.update({
+      where: { id },
+      data,
+      include: { steps: { orderBy: { order: 'asc' } } },
+    });
+    return mapCase(updated as unknown as CaseRow);
+  }
+
+  async deleteCase(id: string): Promise<boolean> {
+    try {
+      await prisma.testCase.delete({ where: { id } });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async duplicateCase(id: string): Promise<TestCase | null> {
+    const src = await prisma.testCase.findUnique({
+      where: { id },
+      include: { steps: { orderBy: { order: 'asc' } } },
+    });
+    if (!src) return null;
+    const srcCase = src as unknown as CaseRow;
+    const copy = await prisma.testCase.create({
+      data: {
+        title: `${srcCase.title} (copy)`,
+        objective: srcCase.objective,
+        preconditions: srcCase.preconditions,
+        testType: srcCase.testType as TestType,
+        priority: srcCase.priority as Priority,
+        status: 'DRAFT' as TestCaseStatus,
+        vendors: srcCase.vendors as VendorCode[],
+        environments: srcCase.environments as Environment[],
+        folderId: srcCase.folderId,
+        ownerAccountId: srcCase.ownerAccountId,
+        labels: srcCase.labels,
+        estimatedDurationMinutes: srcCase.estimatedDurationMinutes,
+        steps: {
+          create: (srcCase.steps ?? []).map((s) => ({
+            order: s.order,
+            action: s.action,
+            testData: s.testData,
+            expectedResult: s.expectedResult,
+          })),
+        },
+      },
+      include: { steps: { orderBy: { order: 'asc' } } },
+    });
+    return mapCase(copy as unknown as CaseRow);
+  }
+
+  async importCases(
+    folderId: string,
+    rows: ImportedCaseRow[],
+    ownerAccountId: string,
+  ): Promise<ImportResult> {
+    const caseIds: string[] = [];
+    for (const row of rows) {
+      if (!row.title || !row.title.trim()) continue;
+      const created = await this.createCase(
+        {
+          title: row.title,
+          objective: row.objective,
+          preconditions: row.preconditions,
+          testType: row.testType,
+          priority: row.priority,
+          vendors: row.vendors,
+          folderId,
+          steps: row.steps,
+        },
+        ownerAccountId,
+      );
+      caseIds.push(created.id);
+    }
+    return { created: caseIds.length, caseIds };
+  }
+
+  // ---------- runs / execution / reporting ----------
+
+  private async defaultPlanId(projectKey: string, owner: string): Promise<string> {
+    const existing = await prisma.testPlan.findFirst({
+      where: { projectKey, name: PILOT_PLAN_NAME },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+    const created = await prisma.testPlan.create({
+      data: {
+        name: PILOT_PLAN_NAME,
+        planType: 'FULL_CYCLE',
+        status: 'ACTIVE',
+        targetEnvironment: 'TEST',
+        ownerAccountId: owner,
+        projectKey,
+      },
+    });
+    return created.id;
+  }
+
+  async listRuns(projectKey = DEFAULT_PROJECT): Promise<TestRunSummary[]> {
+    const cycles = await prisma.testCycle.findMany({
+      where: { testPlan: { projectKey } },
+      include: { executions: { select: { status: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return cycles.map((c) => {
+      const statuses = c.executions.map((e) => e.status as ExecutionStatus);
+      const count = (s: ExecutionStatus) => statuses.filter((x) => x === s).length;
+      return {
+        id: c.id,
+        name: c.name,
+        environment: c.environment as Environment,
+        status: rollup(statuses),
+        total: statuses.length,
+        passed: count('PASS'),
+        failed: count('FAIL'),
+        blocked: count('BLOCKED'),
+        notStarted: count('NOT_STARTED'),
+        createdAt: c.createdAt.toISOString(),
+      };
+    });
+  }
+
+  async createRun(input: CreateRunInput, owner: string, projectKey = DEFAULT_PROJECT): Promise<TestRunDetail> {
+    const planId = await this.defaultPlanId(projectKey, owner);
+    const env = (input.environment ?? 'TEST') as Environment;
+    const cycle = await prisma.testCycle.create({
+      data: { testPlanId: planId, name: input.name.trim() || 'Untitled run', environment: env, status: 'NOT_STARTED' },
+    });
+    for (const caseId of input.testCaseIds) {
+      const tc = await prisma.testCase.findUnique({
+        where: { id: caseId },
+        include: { steps: { orderBy: { order: 'asc' } } },
+      });
+      if (!tc) continue;
+      await prisma.testExecution.create({
+        data: {
+          testCycleId: cycle.id,
+          testCaseId: tc.id,
+          testCaseVersion: tc.version,
+          assignedToAccountId: owner,
+          status: 'NOT_STARTED',
+          environment: env,
+          stepResults: {
+            create: tc.steps.map((s) => ({ testStepId: s.id, stepOrder: s.order, status: 'NOT_STARTED' as const })),
+          },
+        },
+      });
+    }
+    return (await this.getRun(cycle.id)) as TestRunDetail;
+  }
+
+  async getRun(id: string): Promise<TestRunDetail | null> {
+    const cycle = await prisma.testCycle.findUnique({
+      where: { id },
+      include: {
+        executions: {
+          include: {
+            testCase: { select: { displayId: true, title: true } },
+            stepResults: { select: { status: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+    if (!cycle) return null;
+    const executions: RunExecutionSummary[] = cycle.executions.map((e) => {
+      const stepStatuses = e.stepResults.map((r) => r.status as ExecutionStatus);
+      return {
+        id: e.id,
+        testCaseId: e.testCaseId,
+        displayId: e.testCase.displayId,
+        title: e.testCase.title,
+        status: e.status as ExecutionStatus,
+        stepCount: stepStatuses.length,
+        doneSteps: stepStatuses.filter((s) => s !== 'NOT_STARTED').length,
+      };
+    });
+    return {
+      id: cycle.id,
+      name: cycle.name,
+      environment: cycle.environment as Environment,
+      status: rollup(executions.map((e) => e.status)),
+      createdAt: cycle.createdAt.toISOString(),
+      executions,
+    };
+  }
+
+  async deleteRun(id: string): Promise<boolean> {
+    try {
+      await prisma.testCycle.delete({ where: { id } });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async getExecution(id: string): Promise<ExecutionDetail | null> {
+    const e = await prisma.testExecution.findUnique({
+      where: { id },
+      include: {
+        testCase: { select: { displayId: true, title: true, objective: true, preconditions: true } },
+        testCycle: { select: { id: true, name: true } },
+        stepResults: { orderBy: { stepOrder: 'asc' } },
+        defects: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+    if (!e) return null;
+    const stepIds = e.stepResults.map((r) => r.testStepId);
+    const steps = await prisma.testStep.findMany({ where: { id: { in: stepIds } } });
+    const byId = new Map(steps.map((s) => [s.id, s]));
+    const stepViews: ExecutionStepResultView[] = e.stepResults.map((r) => {
+      const ts = byId.get(r.testStepId);
+      return {
+        id: r.id,
+        order: r.stepOrder,
+        action: ts?.action ?? '(step removed)',
+        testData: ts?.testData ?? undefined,
+        expectedResult: ts?.expectedResult ?? '',
+        status: r.status as ExecutionStatus,
+        actualResult: r.actualResult ?? undefined,
+        notes: r.notes ?? undefined,
+      };
+    });
+    return {
+      id: e.id,
+      runId: e.testCycle.id,
+      runName: e.testCycle.name,
+      testCaseDisplayId: e.testCase.displayId,
+      title: e.testCase.title,
+      objective: e.testCase.objective ?? undefined,
+      preconditions: e.testCase.preconditions ?? undefined,
+      environment: e.environment as Environment,
+      status: e.status as ExecutionStatus,
+      notes: e.notes ?? undefined,
+      steps: stepViews,
+      defects: e.defects.map(
+        (df): DefectView => ({
+          id: df.id,
+          summary: df.summary,
+          description: df.description ?? undefined,
+          severity: df.severity as DefectView['severity'],
+          jiraIssueKey: df.jiraIssueKey ?? undefined,
+          createdAt: df.createdAt.toISOString(),
+        }),
+      ),
+    };
+  }
+
+  async createDefect(executionId: string, input: CreateDefectInput, owner: string): Promise<ExecutionDetail | null> {
+    const exists = await prisma.testExecution.findUnique({ where: { id: executionId }, select: { id: true } });
+    if (!exists) return null;
+    await prisma.defect.create({
+      data: {
+        executionId,
+        summary: input.summary.trim() || 'Untitled defect',
+        description: input.description?.trim() ? input.description : null,
+        severity: (input.severity ?? 'MEDIUM') as 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW',
+        reportedByAccountId: owner,
+      },
+    });
+    return this.getExecution(executionId);
+  }
+
+  async setStepResult(
+    executionId: string,
+    stepResultId: string,
+    patch: StepResultPatch,
+  ): Promise<ExecutionDetail | null> {
+    const data: Record<string, unknown> = {};
+    if (patch.status !== undefined) data.status = patch.status;
+    if (patch.actualResult !== undefined) data.actualResult = patch.actualResult || null;
+    if (patch.notes !== undefined) data.notes = patch.notes || null;
+    await prisma.executionStepResult.update({ where: { id: stepResultId }, data });
+
+    const results = await prisma.executionStepResult.findMany({ where: { executionId }, select: { status: true } });
+    const status = rollup(results.map((r) => r.status as ExecutionStatus));
+    const exec = await prisma.testExecution.findUnique({ where: { id: executionId }, select: { startedAt: true } });
+    await prisma.testExecution.update({
+      where: { id: executionId },
+      data: { status, startedAt: exec?.startedAt ?? new Date() },
+    });
+    return this.getExecution(executionId);
+  }
+
+  async completeExecution(executionId: string, owner: string): Promise<ExecutionDetail | null> {
+    const results = await prisma.executionStepResult.findMany({ where: { executionId }, select: { status: true } });
+    const status = rollup(results.map((r) => r.status as ExecutionStatus));
+    await prisma.testExecution.update({
+      where: { id: executionId },
+      data: { status, completedAt: new Date(), executedByAccountId: owner },
+    });
+    return this.getExecution(executionId);
+  }
+
+  async getDashboard(projectKey = DEFAULT_PROJECT): Promise<DashboardData> {
+    const totalCases = await prisma.testCase.count();
+    const cycles = await prisma.testCycle.findMany({ where: { testPlan: { projectKey } }, select: { id: true } });
+    const cycleIds = cycles.map((c) => c.id);
+    const defectCount = await prisma.defect.count({ where: { execution: { testCycleId: { in: cycleIds } } } });
+    const executions = await prisma.testExecution.findMany({
+      where: { testCycleId: { in: cycleIds } },
+      include: {
+        testCase: { select: { title: true, vendors: true } },
+        testCycle: { select: { name: true } },
+      },
+    });
+
+    const byStatus: Record<ExecutionStatus, number> = {
+      NOT_STARTED: 0,
+      IN_PROGRESS: 0,
+      PASS: 0,
+      FAIL: 0,
+      BLOCKED: 0,
+      SKIPPED: 0,
+    };
+    for (const e of executions) byStatus[e.status as ExecutionStatus]++;
+
+    const denom = byStatus.PASS + byStatus.FAIL + byStatus.BLOCKED;
+    const passRate = denom > 0 ? Math.round((byStatus.PASS / denom) * 100) : 0;
+    const executedCaseIds = new Set(executions.map((e) => e.testCaseId));
+
+    const vendors: VendorCode[] = ['PBX', 'LWS', 'CPA', 'HG'];
+    const byVendor: VendorResult[] = vendors
+      .map((v) => {
+        const subset = executions.filter((e) => (e.testCase.vendors as string[]).includes(v));
+        return {
+          vendor: v,
+          pass: subset.filter((e) => e.status === 'PASS').length,
+          fail: subset.filter((e) => e.status === 'FAIL').length,
+          other: subset.filter((e) => e.status !== 'PASS' && e.status !== 'FAIL').length,
+        };
+      })
+      .filter((r) => r.pass + r.fail + r.other > 0);
+
+    const envs: Environment[] = ['DEV', 'TEST', 'STAGING', 'PROD'];
+    const byEnvironment: EnvironmentResult[] = envs
+      .map((env) => {
+        const subset = executions.filter((e) => e.environment === env);
+        return {
+          environment: env,
+          pass: subset.filter((e) => e.status === 'PASS').length,
+          fail: subset.filter((e) => e.status === 'FAIL').length,
+          other: subset.filter((e) => e.status !== 'PASS' && e.status !== 'FAIL').length,
+        };
+      })
+      .filter((r) => r.pass + r.fail + r.other > 0);
+
+    const recent = [...executions]
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+      .slice(0, 8)
+      .map((e) => ({
+        id: e.id,
+        title: e.testCase.title,
+        status: e.status as ExecutionStatus,
+        runName: e.testCycle.name,
+        at: e.updatedAt.toISOString(),
+      }));
+
+    return {
+      totalCases,
+      totalRuns: cycles.length,
+      defectCount,
+      byStatus,
+      passRate,
+      coverage: { executed: executedCaseIds.size, total: totalCases },
+      byVendor,
+      byEnvironment,
+      recent,
+    };
+  }
+}
+
+let storeSingleton: TestCaseStore | null = null;
+export function getStore(): TestCaseStore {
+  if (!storeSingleton) storeSingleton = new PrismaStore();
+  return storeSingleton;
+}

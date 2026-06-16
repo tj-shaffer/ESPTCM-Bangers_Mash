@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
+import { LoginGate } from './components/LoginGate';
 import { App } from './App';
 import './theme/theme.css';
 
@@ -23,9 +24,11 @@ if (!rootEl) {
 createRoot(rootEl).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <LoginGate>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </LoginGate>
     </QueryClientProvider>
   </StrictMode>,
 );

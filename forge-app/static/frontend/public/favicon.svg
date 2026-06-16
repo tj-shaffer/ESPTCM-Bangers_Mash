@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Bangers & Mash">
+  <rect width="48" height="48" rx="12" fill="#4F94BC"/>
+  <path d="M8 40c0-9 6-13 16-13s16 4 16 13z" fill="#EAD49A"/>
+  <ellipse cx="17" cy="31.5" rx="4.2" ry="3" fill="#F4E4BE"/>
+  <ellipse cx="27" cy="30" rx="4.6" ry="3.2" fill="#F4E4BE"/>
+  <ellipse cx="34" cy="33.5" rx="3.6" ry="2.6" fill="#F4E4BE"/>
+  <path d="M14.5 26.5l6.5 6.5L34 16.5" fill="none" stroke="#C25A2A" stroke-width="6.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M16.3 25.4l4.6 4.6" fill="none" stroke="#EC9760" stroke-width="2" stroke-linecap="round"/>
+</svg>

@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   if (state.error) {
     return (
       <div style={{ padding: 16, color: '#DE350B' }}>
-        Failed to initialize TestForge: {state.error}
+        Failed to initialize Bangers &amp; Mash: {state.error}
       </div>
     );
   }

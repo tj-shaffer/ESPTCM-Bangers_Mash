@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "builds": [
+    {
+      "src": "forge-app/static/frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "build" }
+    },
+    {
+      "src": "api/src/index.ts",
+      "use": "@vercel/node",
+      "config": { "includeFiles": ["node_modules/.prisma/client/**"] }
+    }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/src/index.ts" },
+    { "src": "/health", "dest": "/api/src/index.ts" },
+    { "src": "/assets/(.*)", "dest": "/forge-app/static/frontend/assets/$1" },
+    { "src": "/(.+\\.[a-zA-Z0-9]+)", "dest": "/forge-app/static/frontend/$1" },
+    { "src": "/(.*)", "dest": "/forge-app/static/frontend/index.html" }
+  ]
+}

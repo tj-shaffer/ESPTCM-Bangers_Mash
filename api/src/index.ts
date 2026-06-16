@@ -1,17 +1,18 @@
 /**
- * TestForge API — entry point.
+ * TestForge API — entry point (pilot / standalone web-app mode).
  *
- * Composition order matters:
- *   1. loadConfig()   — env validation; throws with a list of missing vars.
- *   2. helmet + cors  — security headers and a tight origin allowlist.
- *   3. JSON parser    — bounded body size.
- *   4. /health        — anonymous, BEFORE auth middleware so probes work.
- *   5. requireInternalAuth + standardLimiter + auditMiddleware — for /api/v1.
- *   6. errorHandler   — last middleware in the chain.
+ * Serves two surfaces:
+ *   - locally: `npm run dev` runs this as a process listening on PORT.
+ *   - on Vercel: this module's default export (the Express app) is invoked as a
+ *     serverless function; `app.listen` is skipped (not run as main).
+ *
+ * Routes:
+ *   GET  /health        — anonymous probe
+ *   POST /api/login     — shared-password login → JWT
+ *   POST /api/invoke    — resolver-style dispatch (Bearer-gated)
  */
 
-// Ambient Request augmentation is picked up automatically via tsconfig `include`
-// (see src/types/express.d.ts) — no import needed.
+// Ambient Request augmentation (req.accountId) via src/types/express.d.ts.
 
 import express, { type Express } from 'express';
 import helmet from 'helmet';
@@ -19,9 +20,8 @@ import cors from 'cors';
 
 import { loadConfig } from './lib/config';
 import { healthRouter } from './routes/health';
-import { requireInternalAuth } from './middleware/auth';
+import { apiRouter } from './routes/invoke';
 import { standardLimiter } from './middleware/rateLimiter';
-import { auditMiddleware } from './middleware/auditMiddleware';
 import { errorHandler } from './middleware/errorHandler';
 
 function buildApp(): Express {
@@ -31,56 +31,31 @@ function buildApp(): Express {
   app.disable('x-powered-by');
   app.use(helmet());
 
-  // CORS: in development allow localhost; in production allow the Atlassian
-  // tenant origin only. Never use `*`.
-  const allowedOrigins =
-    config.nodeEnv === 'production'
-      ? [/\.atlassian\.net$/]
-      : [/\.atlassian\.net$/, 'http://localhost:3000', 'http://localhost:3001'];
-  app.use(
-    cors({
-      origin: allowedOrigins,
-      credentials: false,
-    }),
-  );
+  // Frontend + API are same-origin in production (Vercel). For local dev the
+  // Vite app on :3000 calls the API cross-origin; auth is a Bearer token (no
+  // cookies), so reflecting the origin is sufficient.
+  app.use(cors({ origin: true, credentials: false }));
 
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json({ limit: '2mb' }));
 
-  // Public probes first.
   app.use('/', healthRouter);
 
-  // Everything under /api/v1 requires the v1 shared-secret trust boundary
-  // (DECISIONS.md ADR-002). Feature routers will mount here in later phases.
-  app.use(
-    '/api/v1',
-    requireInternalAuth,
-    standardLimiter,
-    auditMiddleware,
-    // Placeholder so the chain is reachable before feature routers exist.
-    (_req, res) => res.json({ ok: true, message: 'TestForge API foundation online' }),
-  );
+  // Login is public; /invoke is gated inside the router. A rate limiter guards
+  // the whole surface against brute-forcing the password.
+  app.use('/api', standardLimiter, apiRouter);
 
   app.use(errorHandler);
 
   return app;
 }
 
-function main(): void {
-  let app: Express;
-  try {
-    app = buildApp();
-  } catch (err) {
-    // Most commonly: missing required env vars (loadConfig).
-    // eslint-disable-next-line no-console
-    console.error('[boot] failed to start:', err instanceof Error ? err.message : err);
-    process.exit(1);
-  }
+const app = buildApp();
+export default app;
 
-  const config = loadConfig();
-  app.listen(config.port, () => {
+if (require.main === module) {
+  const { port, nodeEnv } = loadConfig();
+  app.listen(port, () => {
     // eslint-disable-next-line no-console
-    console.log(`[boot] TestForge API listening on :${config.port} (${config.nodeEnv})`);
+    console.log(`[boot] TestForge API listening on :${port} (${nodeEnv})`);
   });
 }
-
-main();

@@ -121,7 +121,7 @@ export function ImportWizard({ folderId, folderName, onClose, onImported }: Prop
           />
           {parseError ? <p className="esp-error" style={{ marginTop: 12 }}>{parseError}</p> : null}
           <p className="esp-muted" style={{ fontSize: 12, marginTop: 14 }}>
-            Your spreadsheet's columns don't need specific names — you'll map them to TestForge fields on the next step.
+            Your spreadsheet's columns don't need specific names — you'll map them to Bangers &amp; Mash fields on the next step.
           </p>
         </>
       )}
@@ -130,7 +130,7 @@ export function ImportWizard({ folderId, folderName, onClose, onImported }: Prop
         <>
           <p className="esp-muted" style={{ fontSize: 12, marginTop: 0 }}>
             <strong>{fileName}</strong> · {sheet.rows.length} rows, {sheet.headers.length} columns. Match your columns to
-            TestForge fields:
+            Bangers &amp; Mash fields:
           </p>
           <div className="esp-map-grid" style={{ marginBottom: 18 }}>
             {FIELD_DEFS.map((def) => (

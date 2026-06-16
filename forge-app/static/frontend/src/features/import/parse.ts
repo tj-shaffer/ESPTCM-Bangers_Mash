@@ -5,7 +5,6 @@
  */
 
 import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
 import type {
   ImportedCaseRow,
   Priority,
@@ -74,6 +73,8 @@ function parseCsv(file: File): Promise<ParsedSheet> {
 }
 
 async function parseExcel(file: File): Promise<ParsedSheet> {
+  // Loaded on demand — keeps SheetJS (~400 KB) out of the initial bundle.
+  const XLSX = await import('xlsx');
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array' });
   const firstSheetName = wb.SheetNames[0];

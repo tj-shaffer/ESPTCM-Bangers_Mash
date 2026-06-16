@@ -1,38 +1,120 @@
 /**
- * Thin wrapper over `@forge/bridge` invoke().
+ * Backend client with three interchangeable modes (same invokeResolver API):
  *
- * Inside Jira: frontend → invoke(<resolverKey>) → resolver (forge-app/src/index.ts).
- * Opened directly in a browser (no Jira iframe, so no Forge bridge): calls are
- * served by the in-browser mock store, so the whole UI can be previewed/demoed
- * with zero Jira. See src/mock/mockInvoke.ts.
+ *   - WEB (VITE_API_MODE=web): HTTP to the Express/Neon API at /api/invoke,
+ *     Bearer-token auth (the Vercel deployment). This is the pilot.
+ *   - STANDALONE (opened directly in a browser tab, no Jira, not web): the
+ *     in-browser mock store — UI demo with no backend.
+ *   - FORGE (inside a Jira iframe): @forge/bridge invoke() → resolver.
  *
- * IMPORTANT: `@forge/bridge` is imported lazily (dynamic import) and ONLY when
- * embedded in Jira. Importing it at module top-level in a standalone browser
- * tab can throw during its init (it expects the Forge host frame), which would
- * crash the entire app to a blank white page. The dynamic import keeps it out
- * of the standalone code path entirely.
+ * @forge/bridge is imported lazily and only in FORGE mode (importing it in a
+ * plain tab can crash the app).
  */
 
 import { mockInvoke } from '../mock/mockInvoke';
 
-/**
- * Custom UI runs inside a Jira iframe (window.self !== window.top). When the
- * built app is opened directly in a browser tab it is top-level — that's our
- * signal that there is no Forge host and we should use the mock.
- */
+const WEB = import.meta.env.VITE_API_MODE === 'web';
+const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+
 function isStandalone(): boolean {
   try {
     return typeof window !== 'undefined' && window.self === window.top;
   } catch {
-    // Cross-origin access to window.top throws → we ARE framed (inside Jira).
     return false;
   }
 }
 
-export const STANDALONE = isStandalone();
+export const STANDALONE = isStandalone() && !WEB;
+export const WEB_MODE = WEB;
+
+// ---------- token + auth (web mode) ----------
+
+const TOKEN_KEY = 'tf_token';
+
+export function getToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+export function setToken(token: string): void {
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    /* ignore */
+  }
+}
+export function clearToken(): void {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+export function hasToken(): boolean {
+  return !!getToken();
+}
+
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+  onUnauthorized = fn;
+}
+
+export class UnauthorizedError extends Error {
+  constructor() {
+    super('Unauthorized');
+    this.name = 'UnauthorizedError';
+  }
+}
+
+/** POST the shared password; on success stores the token and returns true. */
+export async function login(password: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/api/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) return false;
+  const data = (await res.json()) as { token?: string };
+  if (!data.token) return false;
+  setToken(data.token);
+  return true;
+}
+
+async function httpInvoke<T>(key: string, payload: Record<string, unknown>): Promise<T> {
+  const token = getToken();
+  const res = await fetch(`${API_BASE}/api/invoke`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ key, payload }),
+  });
+
+  if (res.status === 401) {
+    clearToken();
+    onUnauthorized?.();
+    throw new UnauthorizedError();
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    let message = `Request failed (${res.status})`;
+    try {
+      const parsed = JSON.parse(text) as { error?: string };
+      if (parsed.error) message = parsed.error;
+    } catch {
+      /* keep default */
+    }
+    throw new Error(message);
+  }
+  return (text ? JSON.parse(text) : null) as T;
+}
+
+// ---------- Forge bridge (lazy) ----------
 
 type InvokeFn = <T>(key: string, payload?: unknown) => Promise<T>;
-
 let invokePromise: Promise<InvokeFn> | null = null;
 function getBridgeInvoke(): Promise<InvokeFn> {
   if (!invokePromise) {
@@ -42,6 +124,7 @@ function getBridgeInvoke(): Promise<InvokeFn> {
 }
 
 export async function invokeResolver<T>(key: string, payload?: Record<string, unknown>): Promise<T> {
+  if (WEB) return httpInvoke<T>(key, payload ?? {});
   if (STANDALONE) return mockInvoke<T>(key, payload ?? {});
   const invoke = await getBridgeInvoke();
   return invoke<T>(key, payload ?? {});

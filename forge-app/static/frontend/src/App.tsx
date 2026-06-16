@@ -1,33 +1,74 @@
 /**
- * TestForge app shell — brand header + Repository view.
- * Plans, Execution, Vendor Tracker, and Dashboard mount alongside Repository
- * in later phases (a left/top nav lands when the second view does).
+ * Bangers & Mash app shell — brand header, top nav, and the active view.
+ * Repository (author) · Test Runs (execute) · Dashboard (report).
  */
 
+import { Suspense, lazy, useState } from 'react';
+import Spinner from '@atlaskit/spinner';
 import { useAuth } from './context/AuthContext';
 import { STANDALONE } from './api/client';
+import { Logo } from './components/Logo';
 import { RepositoryView } from './features/repository/RepositoryView';
+
+// Lazy — keeps recharts (Dashboard) out of the initial bundle; each feature
+// view loads on first navigation.
+const RunsView = lazy(() => import('./features/runs/RunsView').then((m) => ({ default: m.RunsView })));
+const DashboardView = lazy(() =>
+  import('./features/dashboard/DashboardView').then((m) => ({ default: m.DashboardView })),
+);
+
+type View = 'repository' | 'runs' | 'dashboard';
+
+const NAV: { key: View; label: string }[] = [
+  { key: 'repository', label: 'Repository' },
+  { key: 'runs', label: 'Test Runs' },
+  { key: 'dashboard', label: 'Dashboard' },
+];
 
 export function App() {
   const auth = useAuth();
+  const [view, setView] = useState<View>('repository');
 
   return (
     <div className="esp-app">
       <header className="esp-header">
         <div className="esp-logo">
-          <span className="esp-logo-mark" aria-hidden />
-          TestForge
+          <Logo size={24} />
+          Bangers &amp; Mash
         </div>
+        <nav className="esp-nav">
+          {NAV.filter((n) => n.key === 'repository' || !STANDALONE).map((n) => (
+            <button
+              key={n.key}
+              className={`esp-nav-item${view === n.key ? ' active' : ''}`}
+              onClick={() => setView(n.key)}
+            >
+              {n.label}
+            </button>
+          ))}
+        </nav>
+        <div className="esp-header-spacer" />
         <span className="esp-badge esp-badge-soft">Everstory Partners</span>
         {STANDALONE ? (
           <span className="esp-badge" style={{ background: 'rgba(240,138,75,0.16)', color: 'var(--esp-orange-strong)' }}>
             Preview · mock data
           </span>
         ) : null}
-        <div className="esp-header-spacer" />
         <span className="esp-user">{auth.displayName ?? auth.accountId ?? 'Unknown user'}</span>
       </header>
-      <RepositoryView />
+      {view === 'repository' ? (
+        <RepositoryView />
+      ) : (
+        <Suspense
+          fallback={
+            <div className="esp-spinner-wrap">
+              <Spinner size="large" />
+            </div>
+          }
+        >
+          {view === 'runs' ? <RunsView /> : <DashboardView />}
+        </Suspense>
+      )}
     </div>
   );
 }

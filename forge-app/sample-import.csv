@@ -1,0 +1,5 @@
+Test Name,Description,Type,Priority,System,Steps,Expected Result
+Cancel a plot reservation,Verify a reserved plot returns to Available when cancelled,Regression,High,PlotBox,Open a reserved plot; Choose Cancel reservation; Confirm cancellation,Plot detail loads; Confirmation prompt appears; Plot status returns to Available
+Process a refund through Coupa,Ensure an approved refund posts back to the customer contract,UAT,Critical,"PBX, CPA",Open a paid contract; Initiate a refund and submit for approval; Approve the refund in Coupa,Contract shows paid balance; Refund enters Pending Approval; Refund posts and balance updates
+Generate end-of-day revenue report,Smoke check that the daily revenue report runs without error,Smoke,Medium,Lawson,Open Reporting; Select End-of-day revenue; Run for today,Reporting menu opens; Report parameters accepted; Report generates with totals
+Edit customer contact details,Confirm a field operator can update a customer phone number,Manual,Low,PlotBox,Open a customer record; Edit the phone number; Save,Customer record opens; Field is editable; Change is saved and shown

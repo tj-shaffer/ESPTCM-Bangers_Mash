@@ -5,8 +5,8 @@
  */
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { invoke } from '@forge/bridge';
 import Spinner from '@atlaskit/spinner';
+import { invokeResolver } from '../api/client';
 
 export interface ForgeUserContext {
   accountId: string | null;
@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    invoke<ForgeUserContext>('getContext')
+    invokeResolver<ForgeUserContext>('getContext')
       .then((ctx) => {
         if (cancelled) return;
         setState({ ...ctx, loading: false, error: null });

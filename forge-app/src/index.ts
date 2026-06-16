@@ -1,22 +1,23 @@
 /**
- * Forge resolver — the only place that bridges the Custom UI iframe and the
- * Azure backend. The shared internal secret is attached HERE, never in the
- * browser (see CLAUDE.md / DECISIONS.md ADR-002).
+ * Forge resolver — the backend for the Forge-native demo build.
  *
- * The frontend calls these via `@forge/bridge` `invoke(<key>, payload)`.
+ * Architecture note: the original design proxied every call to an Azure API
+ * (shared-secret pass-through). For the Forge-native demo we removed that hop —
+ * the resolver now owns the backend logic and talks to a swappable
+ * `TestCaseStore` (in-memory seed today; Forge SQL next). See the memory note
+ * "forge-native-pivot" and DECISIONS.md. The frontend still calls everything
+ * through `@forge/bridge` invoke(), so the production seam is preserved.
  */
 
 import Resolver from '@forge/resolver';
 import api, { route } from '@forge/api';
-
-interface ApiCallPayload {
-  /** e.g. "/test-cases", "/health". The "/api/v1" prefix is added here. */
-  path: string;
-  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-  body?: unknown;
-  /** Optional query string already encoded (e.g. "?status=ACTIVE&page=1"). */
-  query?: string;
-}
+import { getStore } from './data/store';
+import type {
+  CreateFolderInput,
+  CreateTestCaseInput,
+  ImportedCaseRow,
+  UpdateTestCaseInput,
+} from './domain/types';
 
 interface ForgeUserContext {
   accountId: string | null;
@@ -28,12 +29,11 @@ const resolver = new Resolver();
 
 /**
  * `getContext` — invoked by the frontend on mount to bootstrap AuthContext.
- * Returns the Atlassian accountId, displayName, and (if rendered inside a
- * jira:issuePanel) the current issue key.
  */
 resolver.define('getContext', async ({ context }): Promise<ForgeUserContext> => {
   const accountId = context.accountId ?? null;
-  const issueKey = (context.extension as { issue?: { key?: string } } | undefined)?.issue?.key ?? null;
+  const issueKey =
+    (context.extension as { issue?: { key?: string } } | undefined)?.issue?.key ?? null;
 
   let displayName: string | null = null;
   if (accountId) {
@@ -55,46 +55,72 @@ resolver.define('getContext', async ({ context }): Promise<ForgeUserContext> => 
   return { accountId, displayName, currentIssueKey: issueKey };
 });
 
-/**
- * `apiCall` — generic pass-through to the Azure backend. The shared secret
- * and accountId are attached here. The frontend never sees the secret.
- */
-resolver.define('apiCall', async ({ payload, context }): Promise<unknown> => {
-  const { path, method = 'GET', body, query = '' } = (payload ?? {}) as ApiCallPayload;
-  if (!path || !path.startsWith('/')) {
-    throw new Error('apiCall: `path` must start with "/"');
-  }
-
-  const backend = process.env.TESTFORGE_API_BASE_URL;
-  const secret = process.env.TESTFORGE_INTERNAL_SECRET;
-  if (!backend || !secret) {
-    throw new Error(
-      'Resolver misconfigured: TESTFORGE_API_BASE_URL and TESTFORGE_INTERNAL_SECRET must be set ' +
-        '(use `forge variables set` to provision them).',
-    );
-  }
-
+function requireAccountId(context: { accountId?: string }): string {
   const accountId = context.accountId;
-  if (!accountId) {
-    throw new Error('apiCall: missing accountId in Forge context');
-  }
+  if (!accountId) throw new Error('Missing accountId in Forge context');
+  return accountId;
+}
 
-  const url = `${backend.replace(/\/$/, '')}/api/v1${path}${query}`;
-  const resp = await api.fetch(url, {
-    method,
-    headers: {
-      'content-type': 'application/json',
-      'x-testforge-internal-secret': secret,
-      'x-atlassian-account-id': accountId,
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+// ---------- Repository: folders ----------
 
-  const text = await resp.text();
-  if (!resp.ok) {
-    throw new Error(`Backend ${method} ${path} failed: ${resp.status} ${text.slice(0, 500)}`);
-  }
-  return text ? JSON.parse(text) : null;
+resolver.define('repo.getFolderTree', async ({ payload }) => {
+  const { projectKey } = (payload ?? {}) as { projectKey?: string };
+  return getStore().getFolderTree(projectKey);
+});
+
+resolver.define('repo.createFolder', async ({ payload }) => {
+  const input = (payload ?? {}) as CreateFolderInput;
+  if (!input.name || !input.name.trim()) throw new Error('Folder name is required');
+  return getStore().createFolder(input);
+});
+
+// ---------- Repository: test cases ----------
+
+resolver.define('repo.listCases', async ({ payload }) => {
+  const { folderId } = (payload ?? {}) as { folderId?: string };
+  return getStore().listCases(folderId);
+});
+
+resolver.define('repo.getCase', async ({ payload }) => {
+  const { id } = (payload ?? {}) as { id?: string };
+  if (!id) throw new Error('Test case id is required');
+  return getStore().getCase(id);
+});
+
+resolver.define('repo.createCase', async ({ payload, context }) => {
+  const input = (payload ?? {}) as CreateTestCaseInput;
+  if (!input.folderId) throw new Error('folderId is required');
+  if (!input.title || !input.title.trim()) throw new Error('Title is required');
+  return getStore().createCase(input, requireAccountId(context));
+});
+
+resolver.define('repo.updateCase', async ({ payload }) => {
+  const { id, patch } = (payload ?? {}) as { id?: string; patch?: UpdateTestCaseInput };
+  if (!id) throw new Error('Test case id is required');
+  const updated = await getStore().updateCase(id, patch ?? {});
+  if (!updated) throw new Error(`Test case ${id} not found`);
+  return updated;
+});
+
+resolver.define('repo.deleteCase', async ({ payload }) => {
+  const { id } = (payload ?? {}) as { id?: string };
+  if (!id) throw new Error('Test case id is required');
+  return { deleted: await getStore().deleteCase(id) };
+});
+
+resolver.define('repo.duplicateCase', async ({ payload }) => {
+  const { id } = (payload ?? {}) as { id?: string };
+  if (!id) throw new Error('Test case id is required');
+  const copy = await getStore().duplicateCase(id);
+  if (!copy) throw new Error(`Test case ${id} not found`);
+  return copy;
+});
+
+resolver.define('repo.importCases', async ({ payload, context }) => {
+  const { folderId, rows } = (payload ?? {}) as { folderId?: string; rows?: ImportedCaseRow[] };
+  if (!folderId) throw new Error('folderId is required');
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error('No rows to import');
+  return getStore().importCases(folderId, rows, requireAccountId(context));
 });
 
 export const handler = resolver.getDefinitions();

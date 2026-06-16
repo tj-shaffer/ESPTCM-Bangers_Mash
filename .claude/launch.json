@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "testforge-verify",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "forge-app/static/frontend", "run", "verify:preview"],
+      "port": 4321
+    }
+  ]
+}

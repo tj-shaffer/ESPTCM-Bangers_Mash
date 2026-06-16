@@ -71,3 +71,17 @@ Short ADRs for the load-bearing technical choices. Each records the decision and
 **Why.** UUIDs are unsuitable as human-facing, monotonic, never-reused identifiers; a dedicated sequence satisfies the requirement without abandoning UUID PKs.
 
 **Consequences.** Two identifiers per entity (UUID for relations/APIs, `displayId` for humans). Keep the UUID as the canonical key in all foreign keys and API paths.
+
+---
+
+## ADR-006 — Demo build is Forge-native (Forge SQL), Azure deferred
+
+**Status:** Accepted (2026-06-16), demo/pilot scope
+
+**Context.** The wider dev team has not yet committed time to stand up the Azure backend (App Service, Azure Postgres, Blob, networking, a new-data-processor security review). The immediate goal is a fast, low-cost win that demonstrates value and earns that commitment.
+
+**Decision.** For the **demo/pilot**, run TestForge entirely inside Atlassian: backend logic lives in Forge **resolver functions** and the datastore is **Forge SQL** (MySQL-compatible). No Atlassian API key is needed — a Forge app gets native installed-app auth. The Azure API + Azure Postgres + Blob design (and ADR-002's resolver→Azure secret hop) is the **production target**, deferred until the demo is funded. Until the Forge dev site is provisioned, an in-memory **seeded `InMemoryStore`** backs local `forge tunnel` demos; `ForgeSqlStore` is the drop-in persistence adapter.
+
+**Why.** Forge-native means zero infra to provision, an inherently private/internal access point (only licensed users in the installed Jira site — no public endpoint to firewall), and test data that stays in the customer's existing Atlassian tenant (a stronger privacy story for Everstory's PII context — no new vendor/data processor). This is the lowest-effort path to something installable and demoable in a real Jira site.
+
+**Consequences.** This deliberately contradicts two CLAUDE.md invariants ("backend on Azure", "never Forge Storage for primary data") **for the demo only** — they remain correct for production. The `frontend → resolver → data-service` seam is preserved (the resolver depends only on the `TestCaseStore` interface), so swapping `InMemoryStore` → `ForgeSqlStore` → a future `AzureApiStore` touches one construction site, not the app. Forge SQL has no Postgres extensions (e.g. no `pgvector`) and resolver invocations have a ~25s timeout, so CSV/Excel parsing is done client-side and AI similarity features will need a non-pgvector approach. The Prisma schema (`api/prisma/schema.prisma`) is retained as the production reference but is not the demo's runtime store.

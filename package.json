@@ -12,7 +12,8 @@
     "api:build": "npm --workspace api run build",
     "api:migrate": "npm --workspace api run db:migrate",
     "api:generate": "npm --workspace api run db:generate",
-    "forge:lint": "npm --workspace forge-app run lint"
+    "forge:lint": "npm --workspace forge-app run lint",
+    "demo": "npm --prefix forge-app/static/frontend run demo"
   },
   "engines": {
     "node": ">=20"

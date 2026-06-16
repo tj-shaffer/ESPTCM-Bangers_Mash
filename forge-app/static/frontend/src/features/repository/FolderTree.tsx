@@ -57,7 +57,9 @@ function FolderRow({
         <span className="esp-tree-name" title={node.name}>
           {node.name}
         </span>
-        {node.vendorCode ? <span className="esp-badge esp-badge-vendor">{node.vendorCode}</span> : null}
+        {depth === 0 && node.vendorCode ? (
+          <span className="esp-badge esp-badge-vendor">{node.vendorCode}</span>
+        ) : null}
         {node.testCaseCount > 0 ? <span className="esp-tree-count">{node.testCaseCount}</span> : null}
       </div>
       {open &&

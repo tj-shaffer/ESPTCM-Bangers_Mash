@@ -7,6 +7,7 @@ import { DEFAULT_PROJECT, type DefectRecord, type TestCaseStore } from './store'
 import type {
   CreateDefectInput,
   CreateFolderInput,
+  CreatePackageInput,
   CreateRunInput,
   CreateTestCaseInput,
   DashboardData,
@@ -19,6 +20,8 @@ import type {
   FolderNode,
   ImportResult,
   ImportedCaseRow,
+  PackageDetail,
+  PackageSummary,
   Priority,
   RunExecutionSummary,
   StepResultPatch,
@@ -31,6 +34,7 @@ import type {
   TestStep,
   TestStepInput,
   TestType,
+  UpdateRunInput,
   UpdateTestCaseInput,
   VendorCode,
   VendorResult,
@@ -45,6 +49,36 @@ function rollup(statuses: ExecutionStatus[]): ExecutionStatus {
   if (statuses.every((s) => s === 'NOT_STARTED')) return 'NOT_STARTED';
   if (statuses.every((s) => s === 'PASS' || s === 'SKIPPED')) return 'PASS';
   return 'IN_PROGRESS';
+}
+
+/** Build a TestRunSummary from a cycle row that includes executions + package. */
+function runSummaryOf(c: {
+  id: string;
+  name: string;
+  environment: string;
+  createdAt: Date;
+  assigneeName: string | null;
+  packageId: string | null;
+  executions: { status: string }[];
+  package?: { name: string } | null;
+}): TestRunSummary {
+  const statuses = c.executions.map((e) => e.status as ExecutionStatus);
+  const count = (s: ExecutionStatus) => statuses.filter((x) => x === s).length;
+  return {
+    id: c.id,
+    name: c.name,
+    environment: c.environment as Environment,
+    status: rollup(statuses),
+    total: statuses.length,
+    passed: count('PASS'),
+    failed: count('FAIL'),
+    blocked: count('BLOCKED'),
+    notStarted: count('NOT_STARTED'),
+    createdAt: c.createdAt.toISOString(),
+    assigneeName: c.assigneeName,
+    packageId: c.packageId,
+    packageName: c.package?.name ?? null,
+  };
 }
 
 type FolderRow = {
@@ -369,32 +403,24 @@ export class PrismaStore implements TestCaseStore {
   async listRuns(projectKey = DEFAULT_PROJECT): Promise<TestRunSummary[]> {
     const cycles = await prisma.testCycle.findMany({
       where: { testPlan: { projectKey } },
-      include: { executions: { select: { status: true } } },
+      include: { executions: { select: { status: true } }, package: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     });
-    return cycles.map((c) => {
-      const statuses = c.executions.map((e) => e.status as ExecutionStatus);
-      const count = (s: ExecutionStatus) => statuses.filter((x) => x === s).length;
-      return {
-        id: c.id,
-        name: c.name,
-        environment: c.environment as Environment,
-        status: rollup(statuses),
-        total: statuses.length,
-        passed: count('PASS'),
-        failed: count('FAIL'),
-        blocked: count('BLOCKED'),
-        notStarted: count('NOT_STARTED'),
-        createdAt: c.createdAt.toISOString(),
-      };
-    });
+    return cycles.map((c) => runSummaryOf(c));
   }
 
   async createRun(input: CreateRunInput, owner: string, projectKey = DEFAULT_PROJECT): Promise<TestRunDetail> {
     const planId = await this.defaultPlanId(projectKey, owner);
     const env = (input.environment ?? 'TEST') as Environment;
     const cycle = await prisma.testCycle.create({
-      data: { testPlanId: planId, name: input.name.trim() || 'Untitled run', environment: env, status: 'NOT_STARTED' },
+      data: {
+        testPlanId: planId,
+        name: input.name.trim() || 'Untitled run',
+        environment: env,
+        status: 'NOT_STARTED',
+        assigneeName: input.assigneeName?.trim() || null,
+        packageId: input.packageId ?? null,
+      },
     });
     for (const caseId of input.testCaseIds) {
       const tc = await prisma.testCase.findUnique({
@@ -423,6 +449,7 @@ export class PrismaStore implements TestCaseStore {
     const cycle = await prisma.testCycle.findUnique({
       where: { id },
       include: {
+        package: { select: { name: true } },
         executions: {
           include: {
             testCase: { select: { displayId: true, title: true } },
@@ -451,13 +478,115 @@ export class PrismaStore implements TestCaseStore {
       environment: cycle.environment as Environment,
       status: rollup(executions.map((e) => e.status)),
       createdAt: cycle.createdAt.toISOString(),
+      assigneeName: cycle.assigneeName,
+      packageId: cycle.packageId,
+      packageName: cycle.package?.name ?? null,
       executions,
     };
+  }
+
+  async updateRun(id: string, patch: UpdateRunInput): Promise<TestRunDetail | null> {
+    const existing = await prisma.testCycle.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return null;
+    await prisma.testCycle.update({
+      where: { id },
+      data: {
+        ...(patch.name !== undefined ? { name: patch.name.trim() || 'Untitled run' } : {}),
+        ...(patch.assigneeName !== undefined ? { assigneeName: patch.assigneeName?.trim() || null } : {}),
+        ...(patch.packageId !== undefined ? { packageId: patch.packageId } : {}),
+      },
+    });
+    return this.getRun(id);
   }
 
   async deleteRun(id: string): Promise<boolean> {
     try {
       await prisma.testCycle.delete({ where: { id } });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // ---------- packages ----------
+
+  async listPackages(projectKey = DEFAULT_PROJECT): Promise<PackageSummary[]> {
+    const pkgs = await prisma.package.findMany({
+      where: { projectKey },
+      include: { cycles: { include: { executions: { select: { status: true } } } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return pkgs.map((p) => {
+      // Roll a package up from every execution status across its member runs.
+      const statuses = p.cycles.flatMap((c) => c.executions.map((e) => e.status as ExecutionStatus));
+      const count = (s: ExecutionStatus) => statuses.filter((x) => x === s).length;
+      return {
+        id: p.id,
+        displayId: p.displayId,
+        name: p.name,
+        packageType: p.packageType as TestType,
+        status: rollup(statuses),
+        runCount: p.cycles.length,
+        total: statuses.length,
+        passed: count('PASS'),
+        failed: count('FAIL'),
+        blocked: count('BLOCKED'),
+        notStarted: count('NOT_STARTED'),
+        createdAt: p.createdAt.toISOString(),
+      };
+    });
+  }
+
+  async createPackage(
+    input: CreatePackageInput,
+    owner: string,
+    projectKey = DEFAULT_PROJECT,
+  ): Promise<PackageDetail> {
+    const pkg = await prisma.package.create({
+      data: {
+        name: input.name.trim() || 'Untitled package',
+        packageType: (input.packageType ?? 'REGRESSION') as TestType,
+        ownerAccountId: owner,
+        projectKey,
+      },
+    });
+    if (input.runIds && input.runIds.length > 0) {
+      await prisma.testCycle.updateMany({
+        where: { id: { in: input.runIds } },
+        data: { packageId: pkg.id },
+      });
+    }
+    return (await this.getPackage(pkg.id)) as PackageDetail;
+  }
+
+  async getPackage(id: string): Promise<PackageDetail | null> {
+    const pkg = await prisma.package.findUnique({
+      where: { id },
+      include: {
+        cycles: {
+          include: { executions: { select: { status: true } }, package: { select: { name: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+    if (!pkg) return null;
+    const runs = pkg.cycles.map((c) => runSummaryOf(c));
+    const statuses = pkg.cycles.flatMap((c) => c.executions.map((e) => e.status as ExecutionStatus));
+    return {
+      id: pkg.id,
+      displayId: pkg.displayId,
+      name: pkg.name,
+      packageType: pkg.packageType as TestType,
+      status: rollup(statuses),
+      createdAt: pkg.createdAt.toISOString(),
+      runs,
+    };
+  }
+
+  async deletePackage(id: string): Promise<boolean> {
+    try {
+      // Member runs survive — their packageId is set null by the relation.
+      await prisma.package.delete({ where: { id } });
       return true;
     } catch {
       return false;

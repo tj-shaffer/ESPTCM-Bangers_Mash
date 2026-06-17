@@ -10,10 +10,12 @@ import { jiraCheck, jiraConfigured, jiraCreateProblem, jiraOptions } from '../se
 import type {
   CreateDefectInput,
   CreateFolderInput,
+  CreatePackageInput,
   CreateRunInput,
   CreateTestCaseInput,
   ImportedCaseRow,
   StepResultPatch,
+  UpdateRunInput,
   UpdateTestCaseInput,
 } from '../domain/types';
 
@@ -112,10 +114,41 @@ export async function dispatch(
       return store.getRun(id);
     }
 
+    case 'run.update': {
+      const { id, patch } = payload as { id?: string; patch?: UpdateRunInput };
+      if (!id) throw new DispatchError('Run id is required');
+      const updated = await store.updateRun(id, patch ?? {});
+      if (!updated) throw new DispatchError('Run not found', 404);
+      return updated;
+    }
+
     case 'run.delete': {
       const id = payload.id as string | undefined;
       if (!id) throw new DispatchError('Run id is required');
       return { deleted: await store.deleteRun(id) };
+    }
+
+    // ---------- packages ----------
+
+    case 'package.list':
+      return store.listPackages(payload.projectKey as string | undefined);
+
+    case 'package.create': {
+      const input = payload as unknown as CreatePackageInput;
+      if (!input.name || !input.name.trim()) throw new DispatchError('Package name is required');
+      return store.createPackage(input, accountId);
+    }
+
+    case 'package.get': {
+      const id = payload.id as string | undefined;
+      if (!id) throw new DispatchError('Package id is required');
+      return store.getPackage(id);
+    }
+
+    case 'package.delete': {
+      const id = payload.id as string | undefined;
+      if (!id) throw new DispatchError('Package id is required');
+      return { deleted: await store.deletePackage(id) };
     }
 
     case 'exec.get': {

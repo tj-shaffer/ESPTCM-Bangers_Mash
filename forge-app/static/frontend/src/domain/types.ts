@@ -15,6 +15,13 @@ export const STATUSES: TestCaseStatus[] = ['DRAFT', 'ACTIVE', 'DEPRECATED', 'ARC
 export const VENDOR_CODES: VendorCode[] = ['PBX', 'LWS', 'CPA', 'HG'];
 export const ENVIRONMENTS: Environment[] = ['DEV', 'TEST', 'STAGING', 'PROD'];
 
+/**
+ * Seeded team members for identity-light run assignment (pre-SSO). A free-text
+ * name is still allowed; this just powers the picker. Real per-user identity is
+ * deferred to the Azure AD / SSO state — see ENHANCEMENTS #5.
+ */
+export const TEAM_MEMBERS = ['Mohammad Khan', 'Vileyka Lizardo', 'David Brodecki', 'TJ Shaffer', 'Alex'];
+
 export const TEST_TYPE_LABELS: Record<TestType, string> = {
   REGRESSION: 'Regression',
   UAT: 'UAT',
@@ -157,6 +164,17 @@ export interface CreateRunInput {
   name: string;
   environment?: Environment;
   testCaseIds: string[];
+  /** Identity-light run assignee (free text / seeded name). */
+  assigneeName?: string;
+  /** Optional parent package to create this run inside. */
+  packageId?: string | null;
+}
+
+/** Editable run fields (assignee, package membership, name). */
+export interface UpdateRunInput {
+  name?: string;
+  assigneeName?: string | null;
+  packageId?: string | null;
 }
 
 export interface TestRunSummary {
@@ -170,6 +188,48 @@ export interface TestRunSummary {
   blocked: number;
   notStarted: number;
   createdAt: string;
+  assigneeName?: string | null;
+  packageId?: string | null;
+  packageName?: string | null;
+}
+
+// ---------- packages (group runs for end-to-end review) ----------
+
+export interface CreatePackageInput {
+  name: string;
+  packageType?: TestType;
+  /** Runs to attach to the new package. */
+  runIds?: string[];
+}
+
+export interface PackageSummary {
+  id: string;
+  displayId: number;
+  name: string;
+  packageType: TestType;
+  status: ExecutionStatus;
+  runCount: number;
+  total: number;
+  passed: number;
+  failed: number;
+  blocked: number;
+  notStarted: number;
+  createdAt: string;
+}
+
+export interface PackageDetail {
+  id: string;
+  displayId: number;
+  name: string;
+  packageType: TestType;
+  status: ExecutionStatus;
+  createdAt: string;
+  runs: TestRunSummary[];
+}
+
+/** Render helper: PKG-1042 from displayId 1042. */
+export function pkgId(displayId: number): string {
+  return `PKG-${displayId}`;
 }
 
 export interface RunExecutionSummary {
@@ -188,6 +248,9 @@ export interface TestRunDetail {
   environment: Environment;
   status: ExecutionStatus;
   createdAt: string;
+  assigneeName?: string | null;
+  packageId?: string | null;
+  packageName?: string | null;
   executions: RunExecutionSummary[];
 }
 

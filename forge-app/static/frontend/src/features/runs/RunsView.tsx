@@ -5,8 +5,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Spinner from '@atlaskit/spinner';
 import { invokeResolver } from '../../api/client';
-import { useCreateRun, useDeleteRun, useRun, useRuns } from '../../api/runs';
-import { ENVIRONMENTS, tcId } from '../../domain/types';
+import { useCreateRun, useDeleteRun, usePackages, useRun, useRuns } from '../../api/runs';
+import { ENVIRONMENTS, TEAM_MEMBERS, tcId } from '../../domain/types';
 import type { Environment, TestCaseSummary } from '../../domain/types';
 import { Modal, Toast } from '../../components/ui';
 import { ExecBadge, ExecutionRunner } from './ExecutionRunner';
@@ -16,10 +16,21 @@ export function RunsView() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [runnerExecId, setRunnerExecId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [assigneeFilter, setAssigneeFilter] = useState('');
   const [toast, setToast] = useState<string | null>(null);
 
   const run = useRun(selectedRunId);
   const deleteRun = useDeleteRun();
+
+  // Distinct assignees present across runs, for the filter dropdown.
+  const assignees = useMemo(
+    () => [...new Set((runs.data ?? []).map((r) => r.assigneeName).filter((a): a is string => !!a))].sort(),
+    [runs.data],
+  );
+  const visibleRuns = useMemo(
+    () => (runs.data ?? []).filter((r) => !assigneeFilter || r.assigneeName === assigneeFilter),
+    [runs.data, assigneeFilter],
+  );
 
   useEffect(() => {
     if (!selectedRunId && runs.data && runs.data.length > 0) {
@@ -51,11 +62,28 @@ export function RunsView() {
             + New run
           </button>
         </div>
+        {assignees.length > 0 ? (
+          <select
+            className="esp-select"
+            style={{ margin: '8px 10px', width: 'calc(100% - 20px)' }}
+            value={assigneeFilter}
+            onChange={(e) => setAssigneeFilter(e.target.value)}
+          >
+            <option value="">All assignees</option>
+            {assignees.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <div className="esp-tree">
           {(runs.data ?? []).length === 0 ? (
             <div className="esp-empty">No runs yet. Create one to start executing.</div>
+          ) : visibleRuns.length === 0 ? (
+            <div className="esp-empty">No runs assigned to {assigneeFilter}.</div>
           ) : (
-            (runs.data ?? []).map((r) => (
+            visibleRuns.map((r) => (
               <div
                 key={r.id}
                 className={`esp-tree-row${selectedRunId === r.id ? ' selected' : ''}`}
@@ -65,6 +93,8 @@ export function RunsView() {
                   <span style={{ fontWeight: 600 }}>{r.name}</span>
                   <span className="esp-muted" style={{ fontSize: 11 }}>
                     {r.environment} · {r.passed}/{r.total} passed
+                    {r.assigneeName ? ` · 👤 ${r.assigneeName}` : ''}
+                    {r.packageName ? ` · 📦 ${r.packageName}` : ''}
                   </span>
                 </div>
                 <ExecBadge status={r.status} />
@@ -160,10 +190,13 @@ function NewRunModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
     queryKey: ['allCases'],
     queryFn: () => invokeResolver<TestCaseSummary[]>('repo.listCases', {}),
   });
+  const packages = usePackages();
   const createRun = useCreateRun();
 
   const [name, setName] = useState('');
   const [environment, setEnvironment] = useState<Environment>('TEST');
+  const [assignee, setAssignee] = useState('');
+  const [packageId, setPackageId] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const toggle = (id: string) =>
@@ -193,7 +226,13 @@ function NewRunModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
             disabled={!canCreate}
             onClick={() =>
               createRun.mutate(
-                { name, environment, testCaseIds: [...selected] },
+                {
+                  name,
+                  environment,
+                  testCaseIds: [...selected],
+                  assigneeName: assignee.trim() || undefined,
+                  packageId: packageId || null,
+                },
                 { onSuccess: (r) => onCreated(r.id) },
               )
             }
@@ -220,6 +259,35 @@ function NewRunModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
             {ENVIRONMENTS.map((env) => (
               <option key={env} value={env}>
                 {env}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="esp-grid-2" style={{ marginBottom: 14 }}>
+        <div className="esp-field" style={{ marginBottom: 0 }}>
+          <label className="esp-label">Assign to</label>
+          <input
+            className="esp-input"
+            list="esp-team-members"
+            placeholder="e.g. Dave Brodecki"
+            value={assignee}
+            onChange={(e) => setAssignee(e.target.value)}
+          />
+          <datalist id="esp-team-members">
+            {TEAM_MEMBERS.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+        </div>
+        <div className="esp-field" style={{ marginBottom: 0 }}>
+          <label className="esp-label">Package (optional)</label>
+          <select className="esp-select" value={packageId} onChange={(e) => setPackageId(e.target.value)}>
+            <option value="">— none —</option>
+            {(packages.data ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
               </option>
             ))}
           </select>

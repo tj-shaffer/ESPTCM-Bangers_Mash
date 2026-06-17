@@ -276,12 +276,40 @@ model TestPlan {
   @@map("test_plans")
 }
 
+// A Package groups several runs (TestCycles) for a full end-to-end review —
+// the third grouping level above Test Case → Run. See ENHANCEMENTS #3.
+model Package {
+  id             String          @id @default(uuid())
+  // Human-facing monotonic id — rendered as PKG-XXXX.
+  displayId      Int             @unique @default(autoincrement())
+  name           String
+  // Reuses TestType so a package can be labelled Regression / UAT / etc.
+  packageType    TestType        @default(REGRESSION)
+  // Rolled up from member runs at read time; persisted default only.
+  status         ExecutionStatus @default(NOT_STARTED)
+  ownerAccountId String
+  projectKey     String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  cycles TestCycle[]
+
+  @@index([projectKey])
+  @@map("packages")
+}
+
 model TestCycle {
   id          String          @id @default(uuid())
   testPlanId  String
   testPlan    TestPlan        @relation(fields: [testPlanId], references: [id], onDelete: Cascade)
+  // Optional parent package (a run can stand alone or belong to one package).
+  packageId   String?
+  package     Package?        @relation(fields: [packageId], references: [id], onDelete: SetNull)
   name        String
   environment Environment
+  // Identity-light run assignee (free text / seeded name). Real per-user
+  // enforcement is deferred to the Azure AD / SSO state — see ENHANCEMENTS #5.
+  assigneeName String?
   // NOTE: ExecutionStatus reused per the brief; a cycle being SKIPPED/PASS is
   // semantically odd. Candidate for a dedicated CycleStatus enum in Sprint 2.
   status      ExecutionStatus @default(NOT_STARTED)
@@ -294,6 +322,7 @@ model TestCycle {
   executions  TestExecution[]
 
   @@index([testPlanId])
+  @@index([packageId])
   @@map("test_cycles")
 }
 

@@ -8,6 +8,7 @@
 import type {
   CreateDefectInput,
   CreateFolderInput,
+  CreatePackageInput,
   CreateRunInput,
   CreateTestCaseInput,
   DashboardData,
@@ -15,6 +16,8 @@ import type {
   FolderNode,
   ImportResult,
   ImportedCaseRow,
+  PackageDetail,
+  PackageSummary,
   Priority,
   StepResultPatch,
   TestCase,
@@ -22,6 +25,7 @@ import type {
   TestFolder,
   TestRunDetail,
   TestRunSummary,
+  UpdateRunInput,
   UpdateTestCaseInput,
 } from '../domain/types';
 
@@ -49,7 +53,14 @@ export interface TestCaseStore {
   listRuns(projectKey?: string): Promise<TestRunSummary[]>;
   createRun(input: CreateRunInput, ownerAccountId: string, projectKey?: string): Promise<TestRunDetail>;
   getRun(id: string): Promise<TestRunDetail | null>;
+  updateRun(id: string, patch: UpdateRunInput): Promise<TestRunDetail | null>;
   deleteRun(id: string): Promise<boolean>;
+
+  // packages (group runs for end-to-end review)
+  listPackages(projectKey?: string): Promise<PackageSummary[]>;
+  createPackage(input: CreatePackageInput, ownerAccountId: string, projectKey?: string): Promise<PackageDetail>;
+  getPackage(id: string): Promise<PackageDetail | null>;
+  deletePackage(id: string): Promise<boolean>;
   getExecution(id: string): Promise<ExecutionDetail | null>;
   setStepResult(executionId: string, stepResultId: string, patch: StepResultPatch): Promise<ExecutionDetail | null>;
   completeExecution(executionId: string, ownerAccountId: string): Promise<ExecutionDetail | null>;

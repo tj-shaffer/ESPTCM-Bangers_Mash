@@ -13,15 +13,19 @@ import { RepositoryView } from './features/repository/RepositoryView';
 // Lazy — keeps recharts (Dashboard) out of the initial bundle; each feature
 // view loads on first navigation.
 const RunsView = lazy(() => import('./features/runs/RunsView').then((m) => ({ default: m.RunsView })));
+const PackagesView = lazy(() =>
+  import('./features/runs/PackagesView').then((m) => ({ default: m.PackagesView })),
+);
 const DashboardView = lazy(() =>
   import('./features/dashboard/DashboardView').then((m) => ({ default: m.DashboardView })),
 );
 
-type View = 'repository' | 'runs' | 'dashboard';
+type View = 'repository' | 'runs' | 'packages' | 'dashboard';
 
 const NAV: { key: View; label: string }[] = [
   { key: 'repository', label: 'Repository' },
   { key: 'runs', label: 'Test Runs' },
+  { key: 'packages', label: 'Packages' },
   { key: 'dashboard', label: 'Dashboard' },
 ];
 
@@ -66,7 +70,7 @@ export function App() {
             </div>
           }
         >
-          {view === 'runs' ? <RunsView /> : <DashboardView />}
+          {view === 'runs' ? <RunsView /> : view === 'packages' ? <PackagesView /> : <DashboardView />}
         </Suspense>
       )}
     </div>

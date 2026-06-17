@@ -52,6 +52,15 @@ export function useResetPassword() {
   });
 }
 
+/** Completely delete a user account (revokes their access). */
+export function useDeleteUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (accountId: string) => invokeResolver<{ deleted: boolean }>('admin.deleteUser', { accountId }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: usersKey }),
+  });
+}
+
 /** Self-service password change for the logged-in user. */
 export function useChangePassword() {
   return useMutation({

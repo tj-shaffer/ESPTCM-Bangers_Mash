@@ -58,6 +58,7 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'admin.setRole': ADMIN,
   'admin.createUser': ADMIN,
   'admin.resetPassword': ADMIN,
+  'admin.deleteUser': ADMIN,
 };
 
 export function canInvoke(key: string, role: Role | null): boolean {

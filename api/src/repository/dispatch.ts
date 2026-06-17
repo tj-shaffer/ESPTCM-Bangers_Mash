@@ -321,6 +321,32 @@ export async function dispatch(
       return updated;
     }
 
+    case 'admin.deleteUser': {
+      // Completely remove a user account (revokes their access — there is no
+      // separate "disable"; owned cases/runs keep their string id, no FK).
+      const { accountId: targetAccountId } = parse(key, payload);
+      if (targetAccountId === accountId) throw new DispatchError('You cannot delete your own account', 400);
+      const target = await prisma.userRole.findUnique({
+        where: { subjectId: targetAccountId },
+        select: { role: true, email: true },
+      });
+      if (!target) throw new DispatchError('User not found', 404);
+      // Never strand the app without a super admin.
+      if (target.role === Role.SUPER_ADMIN) {
+        const admins = await prisma.userRole.count({ where: { role: Role.SUPER_ADMIN } });
+        if (admins <= 1) throw new DispatchError('Cannot delete the last super admin', 400);
+      }
+      await prisma.userRole.delete({ where: { subjectId: targetAccountId } });
+      await recordAudit({
+        actorAccountId: accountId,
+        action: 'admin.deleteUser',
+        entityType: auditEntityType('admin.deleteUser'),
+        entityId: targetAccountId,
+        before: { role: target.role, email: target.email },
+      });
+      return { deleted: true };
+    }
+
     case 'account.changePassword': {
       const { currentPassword, newPassword } = parse(key, payload);
       const result = await changeOwnPassword(accountId, currentPassword, newPassword);

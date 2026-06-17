@@ -67,6 +67,9 @@ const uuid = (): string => {
 const DEFAULT_PROJECT = 'DS';
 const OWNER = 'local-dev';
 const nowIso = () => new Date().toISOString();
+// 1x1 transparent PNG — a stand-in screenshot so the attachment view/download is demoable offline.
+const DEMO_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
 // ---------- status rollups (mirror the backend) ----------
 
@@ -854,6 +857,17 @@ class MockStore {
     );
     const run1Execs = this.execsForRun(r1.id);
     if (run1Execs[0]) run1Execs[0].steps.forEach((s) => (s.status = 'PASS'));
+    // Seed one attachment so the screenshot view/download is demoable offline.
+    if (run1Execs[0]?.steps[0]) {
+      run1Execs[0].steps[0].attachments.push({
+        id: uuid(),
+        filename: 'reserve-plot-confirmation.png',
+        contentType: 'image/png',
+        sizeBytes: 70,
+        dataBase64: DEMO_PNG,
+        createdAt: nowIso(),
+      });
+    }
     if (run1Execs[1]) {
       run1Execs[1].steps.forEach((s, i) => (s.status = i === run1Execs[1]!.steps.length - 1 ? 'FAIL' : 'PASS'));
       run1Execs[1].defects.push({ id: uuid(), summary: 'Interment double-booking not blocked', description: 'Overlapping service was allowed.', severity: 'HIGH', createdAt: nowIso() });

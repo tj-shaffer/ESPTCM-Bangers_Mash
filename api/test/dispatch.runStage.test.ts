@@ -1,7 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Role } from '@prisma/client';
 import { dispatch, DispatchError } from '../src/repository/dispatch';
 import type { TestCaseStore } from '../src/repository/store';
+
+// Stub the audit write (run.signOff records before/after) so these stay pure
+// unit tests with no database. auditEntityType etc. stay real.
+vi.mock('../src/lib/audit', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/lib/audit')>();
+  return { ...actual, recordAudit: vi.fn(async () => {}) };
+});
 
 // A fake store that records the stage transitions dispatch asks for. Only the
 // methods the run-stage paths touch are implemented; the rest throw if hit so a

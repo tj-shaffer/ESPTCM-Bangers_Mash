@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Role } from '@prisma/client';
-import { canInvoke, PERMISSIONS } from '../src/repository/permissions';
+import { canInvoke, isManager, PERMISSIONS } from '../src/repository/permissions';
 
 describe('RBAC permission map (canInvoke)', () => {
   it('denies unknown keys for every role (fail closed)', () => {
@@ -45,6 +45,14 @@ describe('RBAC permission map (canInvoke)', () => {
     for (const role of Object.values(Role)) {
       expect(canInvoke('account.changePassword', role)).toBe(true);
     }
+  });
+
+  it('isManager() is true only for SUPER_ADMIN and TEST_MANAGER', () => {
+    expect(isManager(Role.SUPER_ADMIN)).toBe(true);
+    expect(isManager(Role.TEST_MANAGER)).toBe(true);
+    expect(isManager(Role.TEST_AUTHOR)).toBe(false);
+    expect(isManager(Role.FIELD_OPERATOR)).toBe(false);
+    expect(isManager(Role.OBSERVER)).toBe(false);
   });
 
   it('SUPER_ADMIN can invoke every mapped key', () => {

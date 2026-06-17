@@ -15,6 +15,7 @@ import { canInvoke } from '../repository/permissions';
 import { requireAuth } from '../middleware/requireAuth';
 import { getStore } from '../repository/prismaStore';
 import { dispatch, DispatchError } from '../repository/dispatch';
+import { WRITE_KEYS, SELF_AUDITED, auditEntityType, auditEntityId, recordAudit } from '../lib/audit';
 
 export const apiRouter = Router();
 
@@ -54,6 +55,18 @@ apiRouter.post('/invoke', requireAuth, async (req: Request, res: Response) => {
   try {
     const result = await dispatch(getStore(), body.key, payload, accountId, role);
     res.json(result ?? null);
+    // Baseline change-log entry per successful mutation. Keys in SELF_AUDITED
+    // write their own richer before/after row inside dispatch. Fire-and-forget —
+    // recordAudit never throws.
+    if (WRITE_KEYS.has(body.key) && !SELF_AUDITED.has(body.key)) {
+      void recordAudit({
+        actorAccountId: accountId,
+        action: body.key,
+        entityType: auditEntityType(body.key),
+        entityId: auditEntityId(payload),
+        ipAddress: req.ip ?? null,
+      });
+    }
   } catch (err) {
     if (err instanceof DispatchError) {
       res.status(err.status).json({ error: err.message });

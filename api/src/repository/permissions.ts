@@ -83,3 +83,12 @@ export function canInvoke(key: string, role: Role): boolean {
   const allowed = PERMISSIONS[key];
   return allowed !== undefined && allowed.includes(role);
 }
+
+/**
+ * The QC / approval tier — super admins and test managers. The single source of
+ * truth for "is this user a manager", so per-key stage logic in dispatch can't
+ * drift from the MANAGE permission tier above.
+ */
+export function isManager(role: Role): boolean {
+  return MANAGE.includes(role);
+}

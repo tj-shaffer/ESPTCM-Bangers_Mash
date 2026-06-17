@@ -9,10 +9,21 @@ import { useCreateRun, useDeleteRun, usePackages, useRun, useRuns, useSetRunStag
 import { ENVIRONMENTS, RUN_STAGES, RUN_STAGE_LABEL, TEAM_MEMBERS, tcId } from '../../domain/types';
 import type { Environment, TestCaseSummary, TestRunDetail } from '../../domain/types';
 import { Modal, Toast } from '../../components/ui';
-import { ExecBadge, ExecutionRunner } from './ExecutionRunner';
+import { ExecBadge } from './ExecutionRunner';
+import { RunPlayer } from './RunPlayer';
 import { useAuth } from '../../context/AuthContext';
 
-export function RunsView({ initialStageFilter = '', heading = 'Test Runs' }: { initialStageFilter?: string; heading?: string } = {}) {
+export function RunsView({
+  initialStageFilter = '',
+  heading = 'Test Runs',
+  deepRunId = null,
+}: {
+  initialStageFilter?: string;
+  heading?: string;
+  /** When set (e.g. arriving from a Repository "Run" handoff via #runs/<id>),
+   *  select that run and open the continuous player straight away. */
+  deepRunId?: string | null;
+} = {}) {
   const auth = useAuth();
   const canManageRuns = auth.can('run.create');
   const isManager = auth.hasRole('SUPER_ADMIN', 'TEST_MANAGER');
@@ -20,7 +31,8 @@ export function RunsView({ initialStageFilter = '', heading = 'Test Runs' }: { i
   const canSignOff = auth.can('run.signOff');
   const runs = useRuns();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [runnerExecId, setRunnerExecId] = useState<string | null>(null);
+  const [playerOpen, setPlayerOpen] = useState(false);
+  const [playerInitialExecId, setPlayerInitialExecId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [stageFilter, setStageFilter] = useState(initialStageFilter);
@@ -49,6 +61,16 @@ export function RunsView({ initialStageFilter = '', heading = 'Test Runs' }: { i
       setSelectedRunId(visibleRuns[0]!.id);
     }
   }, [visibleRuns, selectedRunId]);
+
+  // Arriving via a #runs/<id> deep link (e.g. just created from the Repository):
+  // select that run and drop the user straight into the continuous player.
+  useEffect(() => {
+    if (deepRunId) {
+      setSelectedRunId(deepRunId);
+      setPlayerInitialExecId(null);
+      setPlayerOpen(true);
+    }
+  }, [deepRunId]);
 
   const flash = (m: string) => {
     setToast(m);
@@ -176,40 +198,53 @@ export function RunsView({ initialStageFilter = '', heading = 'Test Runs' }: { i
               />
 
               <div className="esp-list">
-                {detail.executions.map((e) => (
-                  <div key={e.id} className="esp-case-row" onClick={() => setRunnerExecId(e.id)}>
-                    <span className="esp-case-id">{tcId(e.displayId)}</span>
-                    <div className="esp-case-main">
-                      <div className="esp-case-title">{e.title}</div>
-                      <div className="esp-case-meta">
-                        <div className="esp-progress" style={{ width: 90 }}>
-                          <span style={{ width: `${e.stepCount ? (e.doneSteps / e.stepCount) * 100 : 0}%` }} />
+                {detail.executions.map((e) => {
+                  const open = () => {
+                    setPlayerInitialExecId(e.id);
+                    setPlayerOpen(true);
+                  };
+                  return (
+                    <div key={e.id} className="esp-case-row" onClick={open}>
+                      <span className="esp-case-id">{tcId(e.displayId)}</span>
+                      <div className="esp-case-main">
+                        <div className="esp-case-title">{e.title}</div>
+                        <div className="esp-case-meta">
+                          <div className="esp-progress" style={{ width: 90 }}>
+                            <span style={{ width: `${e.stepCount ? (e.doneSteps / e.stepCount) * 100 : 0}%` }} />
+                          </div>
+                          <span>
+                            {e.doneSteps}/{e.stepCount} steps
+                          </span>
                         </div>
-                        <span>
-                          {e.doneSteps}/{e.stepCount} steps
-                        </span>
                       </div>
+                      <ExecBadge status={e.status} />
+                      <button
+                        className="esp-btn esp-btn-secondary"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          open();
+                        }}
+                      >
+                        ▶ Run
+                      </button>
                     </div>
-                    <ExecBadge status={e.status} />
-                    <button
-                      className="esp-btn esp-btn-secondary"
-                      onClick={(ev) => {
-                        ev.stopPropagation();
-                        setRunnerExecId(e.id);
-                      }}
-                    >
-                      ▶ Run
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </>
           )}
         </div>
       </div>
 
-      {runnerExecId && detail ? (
-        <ExecutionRunner executionId={runnerExecId} runId={detail.id} onClose={() => setRunnerExecId(null)} />
+      {playerOpen && selectedRunId ? (
+        <RunPlayer
+          runId={selectedRunId}
+          initialExecutionId={playerInitialExecId}
+          onExit={() => {
+            setPlayerOpen(false);
+            setPlayerInitialExecId(null);
+          }}
+        />
       ) : null}
 
       {showNew ? (

@@ -31,7 +31,7 @@ const NAV: { key: View; label: string; adminOnly?: boolean; managerOnly?: boolea
   { key: 'repository', label: 'Repository' },
   { key: 'runs', label: 'Test Runs' },
   { key: 'review', label: 'Review Queue', managerOnly: true },
-  { key: 'packages', label: 'Packages' },
+  { key: 'packages', label: 'Packages', managerOnly: true },
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'admin', label: 'User Roles', adminOnly: true },
 ];
@@ -129,7 +129,7 @@ export function App() {
           }
         >
           {view === 'runs' ? (
-            <RunsView />
+            <RunsView deepRunId={entityId} />
           ) : view === 'review' ? (
             <RunsView initialStageFilter="AWAITING_QC" heading="Review Queue" />
           ) : view === 'packages' ? (

@@ -58,7 +58,6 @@ export function ExecutionRunner({
   onClose: () => void;
 }) {
   const exec = useExecution(executionId);
-  const setStep = useSetStepResult(runId);
   const complete = useCompleteExecution(runId);
 
   const data = exec.data;
@@ -92,86 +91,104 @@ export function ExecutionRunner({
           <Spinner size="medium" />
         </div>
       ) : (
-        <>
-          <div style={{ marginBottom: 14 }}>
-            <div className="esp-muted" style={{ fontSize: 12, fontWeight: 700 }}>
-              {tcId(data.testCaseDisplayId)} · {data.environment}
-            </div>
-            <h3 style={{ fontSize: 16, margin: '2px 0 6px' }}>{data.title}</h3>
-            {data.objective ? <p className="esp-muted" style={{ margin: 0, fontSize: 13 }}>{data.objective}</p> : null}
-            {data.preconditions ? (
-              <p style={{ margin: '8px 0 0', fontSize: 13 }}>
-                <strong>Preconditions: </strong>
-                {data.preconditions}
-              </p>
-            ) : null}
-          </div>
-
-          {data.steps.map((s) => {
-            const gated = s.screenshotRequired && s.attachments.length === 0;
-            return (
-              <div className="esp-rstep" key={s.id}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <span className="esp-step-num">{s.order}</span>
-                  <ExecBadge status={s.status} />
-                  {s.screenshotRequired ? (
-                    <span className="esp-badge esp-badge-soft" title="A screenshot is required to mark this step">
-                      📎 Screenshot required
-                    </span>
-                  ) : null}
-                </div>
-                <div style={{ fontSize: 14, marginBottom: 4 }}>{s.action}</div>
-                {s.testData ? (
-                  <div className="esp-muted" style={{ fontSize: 12, marginBottom: 4 }}>
-                    Data: {s.testData}
-                  </div>
-                ) : null}
-                <div style={{ fontSize: 13, marginBottom: 4 }}>
-                  <strong>Expected: </strong>
-                  {s.expectedResult}
-                </div>
-
-                <StepAttachments
-                  stepResultId={s.id}
-                  attachments={s.attachments}
-                  runId={runId}
-                />
-
-                <div className="esp-rstep-actions">
-                  {STEP_STATUSES.map((st) => (
-                    <button
-                      key={st}
-                      className={`esp-vbtn${s.status === st ? ` on-${st}` : ''}`}
-                      disabled={gated}
-                      title={gated ? 'Attach a screenshot first' : undefined}
-                      onClick={() =>
-                        setStep.mutate({ executionId, stepResultId: s.id, patch: { status: st } })
-                      }
-                    >
-                      {EXEC_STATUS_LABEL[st]}
-                    </button>
-                  ))}
-                </div>
-                {gated ? (
-                  <p className="esp-muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
-                    📎 Attach a screenshot above to mark this step.
-                  </p>
-                ) : null}
-
-                <ActualResult
-                  initial={s.actualResult ?? ''}
-                  onSave={(actualResult) =>
-                    setStep.mutate({ executionId, stepResultId: s.id, patch: { actualResult } })
-                  }
-                />
-              </div>
-            );
-          })}
-
-          <DefectsPanel exec={data} runId={runId} />
-        </>
+        <ExecutionBody data={data} runId={runId} />
       )}
     </Modal>
+  );
+}
+
+/** Presentational execution detail — case header, per-step marking, attachments,
+ *  and defects. Hosted by the single-case modal (ExecutionRunner) and the
+ *  continuous RunPlayer; the host owns data fetching and the complete/navigate
+ *  controls. */
+export function ExecutionBody({ data, runId }: { data: ExecutionDetail; runId: string }) {
+  const setStep = useSetStepResult(runId);
+
+  return (
+    <>
+      <div style={{ marginBottom: 14 }}>
+        <div className="esp-muted" style={{ fontSize: 12, fontWeight: 700 }}>
+          {tcId(data.testCaseDisplayId)} · {data.environment}
+        </div>
+        <h3 style={{ fontSize: 16, margin: '2px 0 6px' }}>{data.title}</h3>
+        {data.objective ? <p className="esp-muted" style={{ margin: 0, fontSize: 13 }}>{data.objective}</p> : null}
+        {data.preconditions ? (
+          <p style={{ margin: '8px 0 0', fontSize: 13 }}>
+            <strong>Preconditions: </strong>
+            {data.preconditions}
+          </p>
+        ) : null}
+      </div>
+
+      {data.steps.length === 0 ? (
+        <p className="esp-muted" style={{ fontSize: 13 }}>
+          This case has no steps. Mark its overall status with “Complete &amp; next”.
+        </p>
+      ) : null}
+
+      {data.steps.map((s) => {
+        const gated = s.screenshotRequired && s.attachments.length === 0;
+        return (
+          <div className="esp-rstep" key={s.id}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <span className="esp-step-num">{s.order}</span>
+              <ExecBadge status={s.status} />
+              {s.screenshotRequired ? (
+                <span className="esp-badge esp-badge-soft" title="A screenshot is required to mark this step">
+                  📎 Screenshot required
+                </span>
+              ) : null}
+            </div>
+            <div style={{ fontSize: 14, marginBottom: 4 }}>{s.action}</div>
+            {s.testData ? (
+              <div className="esp-muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                Data: {s.testData}
+              </div>
+            ) : null}
+            <div style={{ fontSize: 13, marginBottom: 4 }}>
+              <strong>Expected: </strong>
+              {s.expectedResult}
+            </div>
+
+            <StepAttachments
+              stepResultId={s.id}
+              attachments={s.attachments}
+              runId={runId}
+            />
+
+            <div className="esp-rstep-actions">
+              {STEP_STATUSES.map((st) => (
+                <button
+                  key={st}
+                  className={`esp-vbtn${s.status === st ? ` on-${st}` : ''}`}
+                  disabled={gated}
+                  title={gated ? 'Attach a screenshot first' : undefined}
+                  onClick={() =>
+                    setStep.mutate({ executionId: data.id, stepResultId: s.id, patch: { status: st } })
+                  }
+                >
+                  {EXEC_STATUS_LABEL[st]}
+                </button>
+              ))}
+            </div>
+            {gated ? (
+              <p className="esp-muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+                📎 Attach a screenshot above to mark this step.
+              </p>
+            ) : null}
+
+            <ActualResult
+              initial={s.actualResult ?? ''}
+              onSave={(actualResult) =>
+                setStep.mutate({ executionId: data.id, stepResultId: s.id, patch: { actualResult } })
+              }
+            />
+          </div>
+        );
+      })}
+
+      <DefectsPanel exec={data} runId={runId} />
+    </>
   );
 }
 

@@ -237,12 +237,6 @@ export function ExecutionBody({
               {s.expectedResult}
             </div>
 
-            <StepAttachments
-              stepResultId={s.id}
-              attachments={s.attachments}
-              runId={runId}
-            />
-
             <div className="esp-rstep-actions">
               {STEP_STATUSES.map((st) => (
                 <button
@@ -260,7 +254,7 @@ export function ExecutionBody({
             </div>
             {gated ? (
               <p className="esp-muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
-                📎 Attach a screenshot above to mark this step.
+                📎 Attach a screenshot below to mark this step.
               </p>
             ) : null}
 
@@ -269,6 +263,12 @@ export function ExecutionBody({
               onSave={(actualResult) =>
                 setStep.mutate({ executionId: data.id, stepResultId: s.id, patch: { actualResult } })
               }
+            />
+
+            <StepAttachments
+              stepResultId={s.id}
+              attachments={s.attachments}
+              runId={runId}
             />
 
             {s.status === 'FAIL' ? (
@@ -607,7 +607,13 @@ function StepAttachments({
   return (
     <div style={{ margin: '8px 0' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <button className="esp-btn esp-btn-secondary" onClick={() => fileRef.current?.click()} disabled={addAtt.isPending}>
+        <button
+          type="button"
+          className="esp-link-btn"
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--esp-blue-strong)', textDecoration: 'underline', fontSize: 13 }}
+          onClick={() => fileRef.current?.click()}
+          disabled={addAtt.isPending}
+        >
           {addAtt.isPending ? 'Uploading…' : '📎 Attach screenshot'}
         </button>
         <input

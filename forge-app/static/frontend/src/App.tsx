@@ -38,30 +38,35 @@ const NAV: { key: View; label: string; adminOnly?: boolean; managerOnly?: boolea
 
 const VIEWS: View[] = ['repository', 'runs', 'review', 'packages', 'dashboard', 'admin'];
 
-/** Active view from the URL hash (e.g. "#dashboard"), so tabs are linkable and
- *  survive a refresh. Falls back to Repository for an empty/unknown hash. */
-function viewFromHash(): View {
-  if (typeof window === 'undefined') return 'repository';
-  const h = window.location.hash.replace(/^#\/?/, '') as View;
-  return VIEWS.includes(h) ? h : 'repository';
+/** Parse the URL hash into a view + optional entity id (e.g. "#repository/<caseId>"
+ *  or "#dashboard"), so tabs AND specific test cases are linkable and survive a
+ *  refresh. Falls back to Repository for an empty/unknown hash. */
+function parseHash(): { view: View; entityId: string | null } {
+  if (typeof window === 'undefined') return { view: 'repository', entityId: null };
+  const raw = window.location.hash.replace(/^#\/?/, '');
+  const slash = raw.indexOf('/');
+  const v = (slash === -1 ? raw : raw.slice(0, slash)) as View;
+  const entityId = slash === -1 ? null : raw.slice(slash + 1) || null;
+  return { view: VIEWS.includes(v) ? v : 'repository', entityId };
 }
 
 export function App() {
   const auth = useAuth();
-  const [view, setViewState] = useState<View>(viewFromHash);
+  const [route, setRoute] = useState(parseHash);
+  const { view, entityId } = route;
   const isAdmin = auth.hasRole('SUPER_ADMIN');
   const isManager = auth.hasRole('SUPER_ADMIN', 'TEST_MANAGER');
   const [showChangePw, setShowChangePw] = useState(false);
 
-  // Keep the hash and the active view in sync (covers nav clicks + back/forward).
+  // Keep the hash and the route in sync (covers nav clicks + back/forward).
   useEffect(() => {
-    const onHash = () => setViewState(viewFromHash());
+    const onHash = () => setRoute(parseHash());
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
   const setView = (v: View) => {
-    if (window.location.hash.replace(/^#\/?/, '') !== v) window.location.hash = v;
-    setViewState(v);
+    if (parseHash().view !== v || parseHash().entityId) window.location.hash = v;
+    setRoute({ view: v, entityId: null });
   };
 
   return (
@@ -114,7 +119,7 @@ export function App() {
       ) : null}
       {showChangePw ? <ChangePasswordModal onClose={() => setShowChangePw(false)} /> : null}
       {view === 'repository' || (view === 'admin' && !isAdmin) || (view === 'review' && !isManager) ? (
-        <RepositoryView />
+        <RepositoryView deepCaseId={view === 'repository' ? entityId : null} />
       ) : (
         <Suspense
           fallback={

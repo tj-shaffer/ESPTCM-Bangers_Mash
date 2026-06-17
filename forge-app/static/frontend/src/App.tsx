@@ -50,8 +50,7 @@ export function App() {
           Bangers &amp; Mash
         </div>
         <nav className="esp-nav">
-          {NAV.filter((n) => n.key === 'repository' || !STANDALONE)
-            .filter((n) => !n.adminOnly || isAdmin)
+          {NAV.filter((n) => !n.adminOnly || isAdmin)
             .filter((n) => !n.managerOnly || isManager)
             .map((n) => (
             <button

@@ -27,6 +27,7 @@ import type {
   Priority,
   RunExecutionSummary,
   RunStage,
+  SignOffInput,
   StepResultPatch,
   TestCase,
   TestCaseStatus,
@@ -65,6 +66,8 @@ function runSummaryOf(c: {
   createdAt: Date;
   assigneeName: string | null;
   packageId: string | null;
+  approverName: string | null;
+  approvedAt: Date | null;
   executions: { status: string }[];
   package?: { name: string } | null;
 }): TestRunSummary {
@@ -85,6 +88,8 @@ function runSummaryOf(c: {
     assigneeName: c.assigneeName,
     packageId: c.packageId,
     packageName: c.package?.name ?? null,
+    approverName: c.approverName,
+    approvedAt: c.approvedAt?.toISOString() ?? null,
   };
 }
 
@@ -492,6 +497,9 @@ export class PrismaStore implements TestCaseStore {
       assigneeName: cycle.assigneeName,
       packageId: cycle.packageId,
       packageName: cycle.package?.name ?? null,
+      approverName: cycle.approverName,
+      approvalNote: cycle.approvalNote,
+      approvedAt: cycle.approvedAt?.toISOString() ?? null,
       executions,
     };
   }
@@ -500,6 +508,24 @@ export class PrismaStore implements TestCaseStore {
     const existing = await prisma.testCycle.findUnique({ where: { id }, select: { id: true } });
     if (!existing) return null;
     await prisma.testCycle.update({ where: { id }, data: { stage } });
+    return this.getRun(id);
+  }
+
+  async signOffRun(id: string, input: SignOffInput): Promise<TestRunDetail | null> {
+    const existing = await prisma.testCycle.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return null;
+    const approved = input.decision === 'APPROVED';
+    await prisma.testCycle.update({
+      where: { id },
+      data: {
+        // Approve advances to APPROVED; a rejection sends the run back to the
+        // testers, but the reviewer + note are recorded either way.
+        stage: approved ? 'APPROVED' : 'IN_PROGRESS',
+        approverName: input.approverName.trim() || null,
+        approvalNote: input.note?.trim() || null,
+        approvedAt: new Date(),
+      },
+    });
     return this.getRun(id);
   }
 

@@ -169,6 +169,17 @@ export interface TestRunSummary {
   assigneeName?: string | null;
   packageId?: string | null;
   packageName?: string | null;
+  approverName?: string | null;
+  approvedAt?: string | null;
+}
+
+/** Approver decision recorded at sign-off. */
+export type SignOffDecision = 'APPROVED' | 'REJECTED';
+
+export interface SignOffInput {
+  decision: SignOffDecision;
+  approverName: string;
+  note?: string;
 }
 
 // ---------- packages (group runs for end-to-end review) ----------
@@ -230,6 +241,9 @@ export interface TestRunDetail {
   assigneeName?: string | null;
   packageId?: string | null;
   packageName?: string | null;
+  approverName?: string | null;
+  approvalNote?: string | null;
+  approvedAt?: string | null;
   executions: RunExecutionSummary[];
 }
 

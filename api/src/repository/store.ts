@@ -22,6 +22,7 @@ import type {
   PackageSummary,
   Priority,
   RunStage,
+  SignOffInput,
   StepResultPatch,
   TestCase,
   TestCaseSummary,
@@ -65,6 +66,7 @@ export interface TestCaseStore {
   getRun(id: string): Promise<TestRunDetail | null>;
   updateRun(id: string, patch: UpdateRunInput): Promise<TestRunDetail | null>;
   setRunStage(id: string, stage: RunStage): Promise<TestRunDetail | null>;
+  signOffRun(id: string, input: SignOffInput): Promise<TestRunDetail | null>;
   deleteRun(id: string): Promise<boolean>;
 
   // packages (group runs for end-to-end review)

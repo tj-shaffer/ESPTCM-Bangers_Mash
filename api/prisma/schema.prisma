@@ -336,6 +336,12 @@ model TestCycle {
   // Identity-light run assignee (free text / seeded name). Real per-user
   // enforcement is deferred to the Azure AD / SSO state — see ENHANCEMENTS #5.
   assigneeName String?
+  // Identity-light approval sign-off (recorded when stage → APPROVED, or the
+  // rejection note when sent back). A dedicated Approver role is future SSO
+  // hardening. See ENHANCEMENTS #11.
+  approverName String?
+  approvalNote String?
+  approvedAt   DateTime?
   // NOTE: ExecutionStatus reused per the brief; a cycle being SKIPPED/PASS is
   // semantically odd. Candidate for a dedicated CycleStatus enum in Sprint 2.
   status      ExecutionStatus @default(NOT_STARTED)

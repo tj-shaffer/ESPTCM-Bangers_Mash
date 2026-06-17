@@ -14,6 +14,7 @@ import type {
   PackageDetail,
   PackageSummary,
   RunStage,
+  SignOffInput,
   StepResultPatch,
   TestRunDetail,
   TestRunSummary,
@@ -85,6 +86,18 @@ export function useSetRunStage() {
   return useMutation({
     mutationFn: (vars: { id: string; stage: RunStage }) =>
       invokeResolver<TestRunDetail>('run.setStage', { ...vars }),
+    onSuccess: (run) => {
+      qc.setQueryData(keys.run(run.id), run);
+      qc.invalidateQueries({ queryKey: keys.runs });
+      qc.invalidateQueries({ queryKey: keys.packages });
+    },
+  });
+}
+
+export function useSignOffRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string } & SignOffInput) => invokeResolver<TestRunDetail>('run.signOff', { ...vars }),
     onSuccess: (run) => {
       qc.setQueryData(keys.run(run.id), run);
       qc.invalidateQueries({ queryKey: keys.runs });

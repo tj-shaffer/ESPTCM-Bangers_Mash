@@ -20,6 +20,7 @@ import type {
   ExecutionStatus,
   ImportedCaseRow,
   RunStage,
+  SignOffDecision,
   StepResultPatch,
   UpdateRunInput,
   UpdateTestCaseInput,
@@ -165,6 +166,29 @@ export async function dispatch(
       const updated = await store.setRunStage(id, stage);
       if (!updated) throw new DispatchError('Run not found', 404);
       return updated;
+    }
+
+    case 'run.signOff': {
+      // In-app approval sign-off (manager-gated in the permission map). Only a
+      // run that's been QC'd to READY_FOR_APPROVAL can be signed off. The
+      // reviewer name + decision are recorded either way. See ENHANCEMENTS #11.
+      const { id, decision, approverName, note } = payload as {
+        id?: string;
+        decision?: SignOffDecision;
+        approverName?: string;
+        note?: string;
+      };
+      if (!id) throw new DispatchError('Run id is required');
+      if (decision !== 'APPROVED' && decision !== 'REJECTED') {
+        throw new DispatchError('A valid decision (APPROVED or REJECTED) is required');
+      }
+      if (!approverName || !approverName.trim()) throw new DispatchError('Approver name is required');
+      const run = await store.getRun(id);
+      if (!run) throw new DispatchError('Run not found', 404);
+      if (run.stage !== 'READY_FOR_APPROVAL') {
+        throw new DispatchError('Only a run marked ready for approval can be signed off.', 400);
+      }
+      return store.signOffRun(id, { decision, approverName, note });
     }
 
     case 'run.delete': {

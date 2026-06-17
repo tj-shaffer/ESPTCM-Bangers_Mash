@@ -6,7 +6,7 @@
 import { Suspense, lazy, useState } from 'react';
 import Spinner from '@atlaskit/spinner';
 import { useAuth } from './context/AuthContext';
-import { ROLES, ROLE_LABELS, type Role } from './api/permissions';
+import { ROLE_LABELS } from './api/permissions';
 import { STANDALONE, WEB_MODE } from './api/client';
 import { Logo } from './components/Logo';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
@@ -64,38 +64,12 @@ export function App() {
           ))}
         </nav>
         <div className="esp-header-spacer" />
-        <span className="esp-badge esp-badge-soft">Everstory Partners</span>
         {STANDALONE ? (
           <span className="esp-badge" style={{ background: 'rgba(240,138,75,0.16)', color: 'var(--esp-orange-strong)' }}>
             Preview · mock data
           </span>
         ) : null}
-        <span className="esp-user">{auth.displayName ?? auth.accountId ?? 'Unknown user'}</span>
-        {auth.isSuperAdmin ? (
-          <select
-            className="esp-select"
-            style={{ width: 'auto', marginLeft: 8 }}
-            title="View the app as another role"
-            value={auth.viewAsRole ?? ''}
-            onChange={(e) => auth.setViewAsRole((e.target.value || null) as Role | null)}
-          >
-            <option value="">View as: Yourself (Super Admin)</option>
-            {ROLES.filter((r) => r !== 'SUPER_ADMIN').map((r) => (
-              <option key={r} value={r}>
-                View as: {ROLE_LABELS[r]}
-              </option>
-            ))}
-          </select>
-        ) : null}
-        {WEB_MODE ? (
-          <button
-            className="esp-btn esp-btn-ghost"
-            style={{ marginLeft: 8 }}
-            onClick={() => setShowChangePw(true)}
-          >
-            Change password
-          </button>
-        ) : null}
+        <AccountMenu onChangePassword={() => setShowChangePw(true)} />
       </header>
       {auth.viewAsRole ? (
         <div
@@ -141,6 +115,70 @@ export function App() {
           )}
         </Suspense>
       )}
+    </div>
+  );
+}
+
+/** Compact account control on the right of the header — keeps the bar clean.
+ *  Shows the signed-in name and (web mode) a "Change password" action behind a
+ *  click, instead of crowding the nav. */
+function AccountMenu({ onChangePassword }: { onChangePassword: () => void }) {
+  const auth = useAuth();
+  const [open, setOpen] = useState(false);
+  const name = auth.displayName ?? auth.accountId ?? 'Account';
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        className="esp-btn esp-btn-ghost"
+        title="Account"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        👤 ▾
+      </button>
+      {open ? (
+        <>
+          {/* click-away backdrop */}
+          <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setOpen(false)} />
+          <div
+            role="menu"
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: '100%',
+              marginTop: 6,
+              zIndex: 41,
+              minWidth: 200,
+              background: 'var(--esp-surface)',
+              border: '1px solid var(--esp-border)',
+              borderRadius: 'var(--esp-radius)',
+              boxShadow: 'var(--esp-shadow)',
+              padding: 6,
+            }}
+          >
+            <div className="esp-muted" style={{ padding: '4px 8px 8px', fontSize: 12, borderBottom: '1px solid var(--esp-border)' }}>
+              Signed in as<br />
+              <strong style={{ color: 'var(--esp-ink)' }}>{name}</strong>
+            </div>
+            {WEB_MODE ? (
+              <button
+                className="esp-btn esp-btn-ghost"
+                style={{ width: '100%', justifyContent: 'flex-start', marginTop: 4 }}
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  onChangePassword();
+                }}
+              >
+                Change password
+              </button>
+            ) : (
+              <div className="esp-muted" style={{ padding: '8px', fontSize: 12 }}>Preview — no account actions.</div>
+            )}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

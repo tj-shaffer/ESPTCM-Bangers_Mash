@@ -1,26 +1,53 @@
 /**
- * Standalone mock backend for browser-only preview.
+ * Standalone mock backend for browser-only preview (STANDALONE mode).
  *
- * When the app is opened directly at http://localhost:3000 (NOT embedded in a
- * Jira iframe), there is no Forge bridge, so resolver calls can't work. This
- * module reimplements the resolver `repo.*` endpoints against an in-browser
- * store seeded with the same sample data — letting the whole UI be demoed with
- * zero Jira, zero tunnel, zero install. It is only used when `isStandalone()`
- * is true (see api/client.ts); inside Jira the real bridge is used.
+ * When the app is opened directly (not in `web` mode against the real API), this
+ * module reimplements the resolver endpoints against an in-browser store seeded
+ * with sample data — so the WHOLE product (Repository, Test Runs, QC + approval,
+ * Packages, Dashboard, Users & Roles) can be demoed with zero backend.
+ *
+ * It mirrors the prismaStore's return shapes so the same frontend works against
+ * either backend unchanged.
  */
 
 import type {
+  AddAttachmentInput,
+  AttachmentContent,
+  AttachmentView,
+  CreateDefectInput,
   CreateFolderInput,
+  CreatePackageInput,
+  CreateRunInput,
   CreateTestCaseInput,
+  DashboardData,
+  DashboardFilters,
+  DefectView,
+  Environment,
+  ExecutionDetail,
+  ExecutionStatus,
+  ExecutionStepResultView,
   FolderNode,
   ImportResult,
   ImportedCaseRow,
+  PackageDetail,
+  PackageSummary,
+  Priority,
+  ReportRow,
+  RunExecutionSummary,
+  RunStage,
+  SignOffInput,
+  StepResultPatch,
   TestCase,
   TestCaseSummary,
   TestFolder,
+  TestRunDetail,
+  TestRunSummary,
   TestStep,
   TestStepInput,
+  TestType,
+  UpdateRunInput,
   UpdateTestCaseInput,
+  VendorCode,
 } from '../domain/types';
 
 const uuid = (): string => {
@@ -39,27 +66,130 @@ const uuid = (): string => {
 };
 const DEFAULT_PROJECT = 'DS';
 const OWNER = 'local-dev';
+const nowIso = () => new Date().toISOString();
+
+// ---------- status rollups (mirror the backend) ----------
+
+/** Roll a set of child statuses up to a single status. */
+function rollup(statuses: ExecutionStatus[]): ExecutionStatus {
+  if (statuses.length === 0) return 'NOT_STARTED';
+  if (statuses.includes('FAIL')) return 'FAIL';
+  if (statuses.includes('BLOCKED')) return 'BLOCKED';
+  const active = statuses.filter((s) => s !== 'NOT_STARTED');
+  if (active.length === 0) return 'NOT_STARTED';
+  if (active.length < statuses.length) return 'IN_PROGRESS';
+  return 'PASS'; // all done, none failed/blocked (SKIPPED/ENHANCEMENT count as done)
+}
+
+// ---------- in-memory entities ----------
+
+interface MockAttachment {
+  id: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  dataBase64: string;
+  createdAt: string;
+}
+interface MockStepResult {
+  id: string;
+  testStepId: string;
+  order: number;
+  action: string;
+  testData?: string;
+  expectedResult: string;
+  screenshotRequired: boolean;
+  status: ExecutionStatus;
+  actualResult?: string;
+  notes?: string;
+  attachments: MockAttachment[];
+}
+interface MockDefect {
+  id: string;
+  summary: string;
+  description?: string;
+  severity: Priority;
+  jiraIssueKey?: string;
+  jiraUrl?: string;
+  createdAt: string;
+}
+interface MockExecution {
+  id: string;
+  runId: string;
+  testCaseId: string;
+  displayId: number;
+  title: string;
+  objective?: string;
+  preconditions?: string;
+  environment: Environment;
+  steps: MockStepResult[];
+  defects: MockDefect[];
+}
+interface MockRun {
+  id: string;
+  displayId: number;
+  name: string;
+  environment: Environment;
+  createdAt: string;
+  stage: RunStage;
+  assigneeName?: string | null;
+  packageId?: string | null;
+  approverName?: string | null;
+  approvalNote?: string | null;
+  approvedAt?: string | null;
+}
+interface MockPackage {
+  id: string;
+  displayId: number;
+  name: string;
+  packageType: TestType;
+  createdAt: string;
+}
+interface MockUser {
+  subjectId: string;
+  displayName: string;
+  email: string | null;
+  role: string;
+  updatedAt: string;
+}
+
+function execStatus(e: MockExecution): ExecutionStatus {
+  return rollup(e.steps.map((s) => s.status));
+}
+function doneSteps(e: MockExecution): number {
+  return e.steps.filter((s) => s.status !== 'NOT_STARTED').length;
+}
+function attachmentView(a: MockAttachment): AttachmentView {
+  return { id: a.id, filename: a.filename, contentType: a.contentType, sizeBytes: a.sizeBytes, createdAt: a.createdAt };
+}
 
 class MockStore {
   private folders: TestFolder[];
   private cases: TestCase[];
-  private nextDisplayId: number;
+  private runs: MockRun[] = [];
+  private execs: MockExecution[] = [];
+  private packages: MockPackage[] = [];
+  private users: MockUser[] = [];
+  private nextCaseId: number;
+  private nextRunId = 5001;
+  private nextPkgId = 7001;
 
   constructor() {
     const seed = buildSeed();
     this.folders = seed.folders;
     this.cases = seed.cases;
-    this.nextDisplayId = seed.nextDisplayId;
+    this.nextCaseId = seed.nextDisplayId;
+    this.seedRunsAndUsers();
   }
+
+  // ---------- repository ----------
 
   getFolderTree(projectKey = DEFAULT_PROJECT): FolderNode[] {
     const scoped = this.folders.filter((f) => f.projectKey === projectKey);
     const counts = new Map<string, number>();
     for (const c of this.cases) counts.set(c.folderId, (counts.get(c.folderId) ?? 0) + 1);
-
     const nodeById = new Map<string, FolderNode>();
     for (const f of scoped) nodeById.set(f.id, { ...f, children: [], testCaseCount: counts.get(f.id) ?? 0 });
-
     const roots: FolderNode[] = [];
     for (const node of nodeById.values()) {
       const parent = node.parentId ? nodeById.get(node.parentId) : undefined;
@@ -75,7 +205,7 @@ class MockStore {
   }
 
   createFolder(input: CreateFolderInput): TestFolder {
-    const now = new Date().toISOString();
+    const now = nowIso();
     const siblings = this.folders.filter((f) => f.parentId === (input.parentId ?? null));
     const folder: TestFolder = {
       id: uuid(),
@@ -103,10 +233,10 @@ class MockStore {
   }
 
   createCase(input: CreateTestCaseInput, owner = OWNER): TestCase {
-    const now = new Date().toISOString();
+    const now = nowIso();
     const created: TestCase = {
       id: uuid(),
-      displayId: this.nextDisplayId++,
+      displayId: this.nextCaseId++,
       title: input.title.trim() || 'Untitled test case',
       objective: input.objective,
       preconditions: input.preconditions,
@@ -144,7 +274,7 @@ class MockStore {
     if (patch.estimatedDurationMinutes !== undefined) c.estimatedDurationMinutes = patch.estimatedDurationMinutes;
     if (patch.steps !== undefined) c.steps = normalizeSteps(patch.steps);
     c.version += 1;
-    c.updatedAt = new Date().toISOString();
+    c.updatedAt = nowIso();
     return c;
   }
 
@@ -157,11 +287,11 @@ class MockStore {
   duplicateCase(id: string): TestCase | null {
     const src = this.cases.find((c) => c.id === id);
     if (!src) return null;
-    const now = new Date().toISOString();
+    const now = nowIso();
     const copy: TestCase = {
       ...src,
       id: uuid(),
-      displayId: this.nextDisplayId++,
+      displayId: this.nextCaseId++,
       title: `${src.title} (copy)`,
       status: 'DRAFT',
       version: 1,
@@ -194,6 +324,517 @@ class MockStore {
     }
     return { created: caseIds.length, caseIds };
   }
+
+  // ---------- runs / executions ----------
+
+  private execsForRun(runId: string): MockExecution[] {
+    return this.execs.filter((e) => e.runId === runId);
+  }
+  private packageName(packageId?: string | null): string | null {
+    if (!packageId) return null;
+    return this.packages.find((p) => p.id === packageId)?.name ?? null;
+  }
+
+  private runSummary(r: MockRun): TestRunSummary {
+    const execs = this.execsForRun(r.id);
+    const statuses = execs.map(execStatus);
+    return {
+      id: r.id,
+      name: r.name,
+      environment: r.environment,
+      status: rollup(statuses),
+      total: execs.length,
+      passed: statuses.filter((s) => s === 'PASS').length,
+      failed: statuses.filter((s) => s === 'FAIL').length,
+      blocked: statuses.filter((s) => s === 'BLOCKED').length,
+      notStarted: statuses.filter((s) => s === 'NOT_STARTED').length,
+      createdAt: r.createdAt,
+      stage: r.stage,
+      assigneeName: r.assigneeName ?? null,
+      packageId: r.packageId ?? null,
+      packageName: this.packageName(r.packageId),
+      approverName: r.approverName ?? null,
+      approvedAt: r.approvedAt ?? null,
+    };
+  }
+
+  private runDetail(r: MockRun): TestRunDetail {
+    const execs = this.execsForRun(r.id);
+    const executions: RunExecutionSummary[] = execs.map((e) => ({
+      id: e.id,
+      testCaseId: e.testCaseId,
+      displayId: e.displayId,
+      title: e.title,
+      status: execStatus(e),
+      stepCount: e.steps.length,
+      doneSteps: doneSteps(e),
+    }));
+    return {
+      id: r.id,
+      name: r.name,
+      environment: r.environment,
+      status: rollup(execs.map(execStatus)),
+      createdAt: r.createdAt,
+      stage: r.stage,
+      assigneeName: r.assigneeName ?? null,
+      packageId: r.packageId ?? null,
+      packageName: this.packageName(r.packageId),
+      approverName: r.approverName ?? null,
+      approvalNote: r.approvalNote ?? null,
+      approvedAt: r.approvedAt ?? null,
+      executions,
+    };
+  }
+
+  listRuns(): TestRunSummary[] {
+    return this.runs.map((r) => this.runSummary(r)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+  getRun(id: string): TestRunDetail | null {
+    const r = this.runs.find((x) => x.id === id);
+    return r ? this.runDetail(r) : null;
+  }
+
+  createRun(input: CreateRunInput, _owner = OWNER): TestRunDetail {
+    const env = input.environment ?? 'TEST';
+    const run: MockRun = {
+      id: uuid(),
+      displayId: this.nextRunId++,
+      name: input.name.trim(),
+      environment: env,
+      createdAt: nowIso(),
+      stage: 'IN_PROGRESS',
+      assigneeName: input.assigneeName ?? null,
+      packageId: input.packageId ?? null,
+    };
+    this.runs.push(run);
+    for (const caseId of input.testCaseIds) {
+      const c = this.cases.find((x) => x.id === caseId);
+      if (!c) continue;
+      this.execs.push({
+        id: uuid(),
+        runId: run.id,
+        testCaseId: c.id,
+        displayId: c.displayId,
+        title: c.title,
+        objective: c.objective,
+        preconditions: c.preconditions,
+        environment: env,
+        defects: [],
+        steps: c.steps.map((s, i) => ({
+          id: uuid(),
+          testStepId: s.id,
+          order: s.order ?? i + 1,
+          action: s.action,
+          testData: s.testData,
+          expectedResult: s.expectedResult,
+          screenshotRequired: !!s.screenshotRequired,
+          status: 'NOT_STARTED',
+          attachments: [],
+        })),
+      });
+    }
+    return this.runDetail(run);
+  }
+
+  updateRun(id: string, patch: UpdateRunInput): TestRunDetail | null {
+    const r = this.runs.find((x) => x.id === id);
+    if (!r) return null;
+    if (patch.name !== undefined) r.name = patch.name.trim() || r.name;
+    if (patch.assigneeName !== undefined) r.assigneeName = patch.assigneeName;
+    if (patch.packageId !== undefined) r.packageId = patch.packageId;
+    return this.runDetail(r);
+  }
+
+  setRunStage(id: string, stage: RunStage): TestRunDetail | null {
+    const r = this.runs.find((x) => x.id === id);
+    if (!r) return null;
+    r.stage = stage;
+    if (stage !== 'APPROVED') {
+      r.approverName = null;
+      r.approvalNote = null;
+      r.approvedAt = null;
+    }
+    return this.runDetail(r);
+  }
+
+  signOffRun(id: string, input: SignOffInput): TestRunDetail | null {
+    const r = this.runs.find((x) => x.id === id);
+    if (!r) return null;
+    if (input.decision === 'APPROVED') {
+      r.stage = 'APPROVED';
+      r.approverName = input.approverName;
+      r.approvalNote = input.note ?? null;
+      r.approvedAt = nowIso();
+    } else {
+      r.stage = 'IN_PROGRESS';
+      r.approverName = null;
+      r.approvalNote = input.note ?? null;
+      r.approvedAt = null;
+    }
+    return this.runDetail(r);
+  }
+
+  deleteRun(id: string): boolean {
+    const before = this.runs.length;
+    this.runs = this.runs.filter((r) => r.id !== id);
+    this.execs = this.execs.filter((e) => e.runId !== id);
+    return this.runs.length < before;
+  }
+
+  // ---------- execution detail / steps / attachments / defects ----------
+
+  private execDetail(e: MockExecution): ExecutionDetail {
+    const run = this.runs.find((r) => r.id === e.runId);
+    const steps: ExecutionStepResultView[] = e.steps.map((s) => ({
+      id: s.id,
+      order: s.order,
+      action: s.action,
+      testData: s.testData,
+      expectedResult: s.expectedResult,
+      status: s.status,
+      actualResult: s.actualResult,
+      notes: s.notes,
+      screenshotRequired: s.screenshotRequired,
+      attachments: s.attachments.map(attachmentView),
+    }));
+    const defects: DefectView[] = e.defects.map((d) => ({
+      id: d.id,
+      summary: d.summary,
+      description: d.description,
+      severity: d.severity,
+      jiraIssueKey: d.jiraIssueKey,
+      jiraUrl: d.jiraUrl,
+      createdAt: d.createdAt,
+    }));
+    return {
+      id: e.id,
+      runId: e.runId,
+      runName: run?.name ?? '',
+      testCaseDisplayId: e.displayId,
+      title: e.title,
+      objective: e.objective,
+      preconditions: e.preconditions,
+      environment: e.environment,
+      status: execStatus(e),
+      steps,
+      defects,
+    };
+  }
+
+  getExecution(id: string): ExecutionDetail | null {
+    const e = this.execs.find((x) => x.id === id);
+    return e ? this.execDetail(e) : null;
+  }
+
+  setStepResult(executionId: string, stepResultId: string, patch: StepResultPatch): ExecutionDetail | null {
+    const e = this.execs.find((x) => x.id === executionId);
+    if (!e) return null;
+    const s = e.steps.find((x) => x.id === stepResultId);
+    if (!s) return null;
+    if (patch.status !== undefined) s.status = patch.status;
+    if (patch.actualResult !== undefined) s.actualResult = patch.actualResult;
+    if (patch.notes !== undefined) s.notes = patch.notes;
+    return this.execDetail(e);
+  }
+
+  /** Screenshot gate lookup (mirrors store.getStepResultGate). */
+  stepGate(stepResultId: string): { screenshotRequired: boolean; hasAttachment: boolean } | null {
+    for (const e of this.execs) {
+      const s = e.steps.find((x) => x.id === stepResultId);
+      if (s) return { screenshotRequired: s.screenshotRequired, hasAttachment: s.attachments.length > 0 };
+    }
+    return null;
+  }
+
+  addAttachment(input: AddAttachmentInput): ExecutionDetail | null {
+    for (const e of this.execs) {
+      const s = e.steps.find((x) => x.id === input.stepResultId);
+      if (s) {
+        s.attachments.push({
+          id: uuid(),
+          filename: input.filename || 'screenshot.png',
+          contentType: input.contentType || 'image/png',
+          sizeBytes: Math.floor((input.dataBase64.length * 3) / 4),
+          dataBase64: input.dataBase64,
+          createdAt: nowIso(),
+        });
+        return this.execDetail(e);
+      }
+    }
+    return null;
+  }
+
+  deleteAttachment(id: string): ExecutionDetail | null {
+    for (const e of this.execs) {
+      for (const s of e.steps) {
+        const before = s.attachments.length;
+        s.attachments = s.attachments.filter((a) => a.id !== id);
+        if (s.attachments.length < before) return this.execDetail(e);
+      }
+    }
+    return null;
+  }
+
+  getAttachment(id: string): AttachmentContent | null {
+    for (const e of this.execs) {
+      for (const s of e.steps) {
+        const a = s.attachments.find((x) => x.id === id);
+        if (a) return { id: a.id, filename: a.filename, contentType: a.contentType, dataBase64: a.dataBase64 };
+      }
+    }
+    return null;
+  }
+
+  completeExecution(id: string): ExecutionDetail | null {
+    const e = this.execs.find((x) => x.id === id);
+    if (!e) return null;
+    // Any step left NOT_STARTED is marked SKIPPED on completion (demo convenience).
+    for (const s of e.steps) if (s.status === 'NOT_STARTED') s.status = 'SKIPPED';
+    return this.execDetail(e);
+  }
+
+  createDefect(executionId: string, input: CreateDefectInput): ExecutionDetail | null {
+    const e = this.execs.find((x) => x.id === executionId);
+    if (!e) return null;
+    e.defects.push({
+      id: uuid(),
+      summary: input.summary.trim(),
+      description: input.description,
+      severity: input.severity ?? 'MEDIUM',
+      createdAt: nowIso(),
+    });
+    return this.execDetail(e);
+  }
+
+  linkDefectJira(defectId: string, key: string): ExecutionDetail | null {
+    for (const e of this.execs) {
+      const d = e.defects.find((x) => x.id === defectId);
+      if (d) {
+        d.jiraIssueKey = key;
+        return this.execDetail(e);
+      }
+    }
+    return null;
+  }
+
+  // ---------- packages ----------
+
+  private packageSummary(p: MockPackage): PackageSummary {
+    const memberRuns = this.runs.filter((r) => r.packageId === p.id).map((r) => this.runSummary(r));
+    const sum = (k: 'total' | 'passed' | 'failed' | 'blocked' | 'notStarted') =>
+      memberRuns.reduce((acc, r) => acc + r[k], 0);
+    return {
+      id: p.id,
+      displayId: p.displayId,
+      name: p.name,
+      packageType: p.packageType,
+      status: rollup(memberRuns.map((r) => r.status)),
+      runCount: memberRuns.length,
+      total: sum('total'),
+      passed: sum('passed'),
+      failed: sum('failed'),
+      blocked: sum('blocked'),
+      notStarted: sum('notStarted'),
+      createdAt: p.createdAt,
+    };
+  }
+
+  listPackages(): PackageSummary[] {
+    return this.packages.map((p) => this.packageSummary(p)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  getPackage(id: string): PackageDetail | null {
+    const p = this.packages.find((x) => x.id === id);
+    if (!p) return null;
+    const runs = this.runs.filter((r) => r.packageId === p.id).map((r) => this.runSummary(r));
+    return {
+      id: p.id,
+      displayId: p.displayId,
+      name: p.name,
+      packageType: p.packageType,
+      status: rollup(runs.map((r) => r.status)),
+      createdAt: p.createdAt,
+      runs,
+    };
+  }
+
+  createPackage(input: CreatePackageInput): PackageDetail {
+    const p: MockPackage = {
+      id: uuid(),
+      displayId: this.nextPkgId++,
+      name: input.name.trim(),
+      packageType: input.packageType ?? 'REGRESSION',
+      createdAt: nowIso(),
+    };
+    this.packages.push(p);
+    for (const runId of input.runIds ?? []) {
+      const r = this.runs.find((x) => x.id === runId);
+      if (r) r.packageId = p.id;
+    }
+    return this.getPackage(p.id)!;
+  }
+
+  deletePackage(id: string): boolean {
+    const before = this.packages.length;
+    this.packages = this.packages.filter((p) => p.id !== id);
+    for (const r of this.runs) if (r.packageId === id) r.packageId = null;
+    return this.packages.length < before;
+  }
+
+  // ---------- dashboard / report ----------
+
+  private scopedExecs(filters: DashboardFilters): MockExecution[] {
+    let runs = this.runs;
+    if (filters.packageId) runs = runs.filter((r) => r.packageId === filters.packageId);
+    if (filters.runId) runs = runs.filter((r) => r.id === filters.runId);
+    const runIds = new Set(runs.map((r) => r.id));
+    let execs = this.execs.filter((e) => runIds.has(e.runId));
+    if (filters.testType) {
+      const ok = new Set(this.cases.filter((c) => c.testType === filters.testType).map((c) => c.id));
+      execs = execs.filter((e) => ok.has(e.testCaseId));
+    }
+    return execs;
+  }
+
+  getDashboard(filters: DashboardFilters = {}): DashboardData {
+    const execs = this.scopedExecs(filters);
+    const runIds = new Set(execs.map((e) => e.runId));
+    const byStatus: Record<ExecutionStatus, number> = {
+      NOT_STARTED: 0,
+      IN_PROGRESS: 0,
+      PASS: 0,
+      FAIL: 0,
+      BLOCKED: 0,
+      SKIPPED: 0,
+      ENHANCEMENT: 0,
+    };
+    for (const e of execs) byStatus[execStatus(e)] += 1;
+    const executed = execs.filter((e) => execStatus(e) !== 'NOT_STARTED').length;
+    const passed = byStatus.PASS;
+    const defectCount = execs.reduce((acc, e) => acc + e.defects.length, 0);
+
+    const vendorMap = new Map<VendorCode, { pass: number; fail: number; other: number }>();
+    const envMap = new Map<Environment, { pass: number; fail: number; other: number }>();
+    for (const e of execs) {
+      const st = execStatus(e);
+      const bucket = st === 'PASS' ? 'pass' : st === 'FAIL' ? 'fail' : 'other';
+      const c = this.cases.find((x) => x.id === e.testCaseId);
+      for (const v of c?.vendors ?? []) {
+        const row = vendorMap.get(v) ?? { pass: 0, fail: 0, other: 0 };
+        row[bucket] += 1;
+        vendorMap.set(v, row);
+      }
+      const er = envMap.get(e.environment) ?? { pass: 0, fail: 0, other: 0 };
+      er[bucket] += 1;
+      envMap.set(e.environment, er);
+    }
+
+    const recent = [...execs]
+      .reverse()
+      .slice(0, 8)
+      .map((e) => ({
+        id: e.id,
+        title: e.title,
+        status: execStatus(e),
+        runName: this.runs.find((r) => r.id === e.runId)?.name ?? '',
+        at: nowIso(),
+      }));
+
+    return {
+      totalCases: this.cases.length,
+      totalRuns: runIds.size,
+      defectCount,
+      byStatus,
+      passRate: executed > 0 ? Math.round((passed / executed) * 100) : 0,
+      coverage: { executed: new Set(execs.filter((e) => execStatus(e) !== 'NOT_STARTED').map((e) => e.testCaseId)).size, total: this.cases.length },
+      byVendor: [...vendorMap.entries()].map(([vendor, v]) => ({ vendor, ...v })),
+      byEnvironment: [...envMap.entries()].map(([environment, v]) => ({ environment, ...v })),
+      recent,
+    };
+  }
+
+  getReport(filters: DashboardFilters = {}): ReportRow[] {
+    return this.scopedExecs(filters).map((e) => {
+      const run = this.runs.find((r) => r.id === e.runId);
+      const c = this.cases.find((x) => x.id === e.testCaseId);
+      return {
+        displayId: e.displayId,
+        title: e.title,
+        runName: run?.name ?? '',
+        packageName: this.packageName(run?.packageId),
+        vendors: c?.vendors ?? [],
+        environment: e.environment,
+        status: execStatus(e),
+        stepsDone: doneSteps(e),
+        stepsTotal: e.steps.length,
+        defectCount: e.defects.length,
+        jiraKeys: e.defects.map((d) => d.jiraIssueKey).filter((k): k is string => !!k),
+        assigneeName: run?.assigneeName ?? null,
+        stage: run?.stage ?? 'IN_PROGRESS',
+        updatedAt: run?.createdAt ?? nowIso(),
+      };
+    });
+  }
+
+  // ---------- admin / users ----------
+
+  listUsers(): MockUser[] {
+    return [...this.users].sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }
+  setUserRole(subjectId: string, role: string): MockUser | null {
+    const u = this.users.find((x) => x.subjectId === subjectId);
+    if (!u) return null;
+    u.role = role;
+    u.updatedAt = nowIso();
+    return u;
+  }
+  createUser(email: string, displayName: string, role: string): MockUser {
+    const u: MockUser = { subjectId: uuid(), email: email.trim().toLowerCase(), displayName: displayName.trim(), role, updatedAt: nowIso() };
+    this.users.push(u);
+    return u;
+  }
+  resetUserPassword(subjectId: string): { subjectId: string; email: string | null } | null {
+    const u = this.users.find((x) => x.subjectId === subjectId);
+    return u ? { subjectId: u.subjectId, email: u.email } : null;
+  }
+
+  // ---------- seed runs/executions/packages/users ----------
+
+  private seedRunsAndUsers() {
+    this.users = [
+      { subjectId: 'local-dev', displayName: 'Local Dev (mock)', email: 'dev@everstory.example', role: 'SUPER_ADMIN', updatedAt: '2026-06-01T09:00:00.000Z' },
+      { subjectId: uuid(), displayName: 'Mariah Khan', email: 'mkhan@everstory.example', role: 'TEST_MANAGER', updatedAt: '2026-06-01T09:00:00.000Z' },
+      { subjectId: uuid(), displayName: 'Dave Brodecki', email: 'dbrod@everstory.example', role: 'TEST_AUTHOR', updatedAt: '2026-06-01T09:00:00.000Z' },
+      { subjectId: uuid(), displayName: 'Vince Lizardi', email: 'vliza@everstory.example', role: 'FIELD_OPERATOR', updatedAt: '2026-06-01T09:00:00.000Z' },
+    ];
+
+    // Run 1 — in progress regression, one failure with a defect.
+    const r1 = this.createRun(
+      { name: 'Regression — June release', environment: 'TEST', assigneeName: 'Dave Brodecki', testCaseIds: this.cases.slice(0, 3).map((c) => c.id) },
+      OWNER,
+    );
+    const run1Execs = this.execsForRun(r1.id);
+    if (run1Execs[0]) run1Execs[0].steps.forEach((s) => (s.status = 'PASS'));
+    if (run1Execs[1]) {
+      run1Execs[1].steps.forEach((s, i) => (s.status = i === run1Execs[1]!.steps.length - 1 ? 'FAIL' : 'PASS'));
+      run1Execs[1].defects.push({ id: uuid(), summary: 'Interment double-booking not blocked', description: 'Overlapping service was allowed.', severity: 'HIGH', createdAt: nowIso() });
+    }
+    if (run1Execs[2]) run1Execs[2].steps.forEach((s, i) => (s.status = i === 0 ? 'PASS' : 'NOT_STARTED'));
+
+    // Run 2 — UAT, all passed, ready for approval, in a package.
+    const e2eCase = this.cases.find((c) => c.testType === 'UAT') ?? this.cases[this.cases.length - 1];
+    const r2 = this.createRun(
+      { name: 'UAT — go-live sign-off', environment: 'STAGING', assigneeName: 'Mariah Khan', testCaseIds: e2eCase ? [e2eCase.id] : [] },
+      OWNER,
+    );
+    this.execsForRun(r2.id).forEach((e) => e.steps.forEach((s) => (s.status = 'PASS')));
+    const run2 = this.runs.find((r) => r.id === r2.id)!;
+    run2.stage = 'READY_FOR_APPROVAL';
+
+    // Package grouping the UAT run.
+    const pkg = this.createPackage({ name: 'June Release — End-to-end', packageType: 'UAT', runIds: [r2.id] });
+    void pkg;
+  }
 }
 
 function toSummary(c: TestCase): TestCaseSummary {
@@ -220,6 +861,7 @@ function normalizeSteps(steps: TestStepInput[]): TestStep[] {
       action: s.action ?? '',
       testData: s.testData,
       expectedResult: s.expectedResult ?? '',
+      screenshotRequired: s.screenshotRequired,
     }));
 }
 
@@ -353,33 +995,110 @@ function getMockStore(): MockStore {
 /** Dispatch a resolver-style invoke against the in-browser mock store. */
 export async function mockInvoke<T>(key: string, payload: Record<string, unknown>): Promise<T> {
   const store = getMockStore();
+  const p = payload as Record<string, any>;
   switch (key) {
     case 'getContext':
-      // Mock/standalone preview runs as a super admin so every affordance shows.
-      return {
-        accountId: 'local-dev',
-        displayName: 'Local Dev (mock)',
-        role: 'SUPER_ADMIN',
-        currentIssueKey: null,
-      } as T;
+      return { accountId: 'local-dev', displayName: 'Local Dev (mock)', role: 'SUPER_ADMIN', mustChangePassword: false, currentIssueKey: null } as T;
+
+    // repository
     case 'repo.getFolderTree':
-      return store.getFolderTree(payload.projectKey as string | undefined) as T;
+      return store.getFolderTree(p.projectKey) as T;
     case 'repo.createFolder':
-      return store.createFolder(payload as unknown as CreateFolderInput) as T;
+      return store.createFolder(p as unknown as CreateFolderInput) as T;
     case 'repo.listCases':
-      return store.listCases(payload.folderId as string | undefined) as T;
+      return store.listCases(p.folderId) as T;
     case 'repo.getCase':
-      return store.getCase(payload.id as string) as T;
+      return store.getCase(p.id) as T;
     case 'repo.createCase':
-      return store.createCase(payload as unknown as CreateTestCaseInput) as T;
+      return store.createCase(p as unknown as CreateTestCaseInput) as T;
     case 'repo.updateCase':
-      return store.updateCase(payload.id as string, (payload.patch ?? {}) as UpdateTestCaseInput) as T;
+      return store.updateCase(p.id, (p.patch ?? {}) as UpdateTestCaseInput) as T;
     case 'repo.deleteCase':
-      return { deleted: store.deleteCase(payload.id as string) } as T;
+      return { deleted: store.deleteCase(p.id) } as T;
     case 'repo.duplicateCase':
-      return store.duplicateCase(payload.id as string) as T;
+      return store.duplicateCase(p.id) as T;
     case 'repo.importCases':
-      return store.importCases(payload.folderId as string, (payload.rows ?? []) as ImportedCaseRow[]) as T;
+      return store.importCases(p.folderId, (p.rows ?? []) as ImportedCaseRow[]) as T;
+
+    // runs
+    case 'run.list':
+      return store.listRuns() as T;
+    case 'run.get':
+      return store.getRun(p.id) as T;
+    case 'run.create':
+      return store.createRun(p as unknown as CreateRunInput) as T;
+    case 'run.update':
+      return store.updateRun(p.id, (p.patch ?? {}) as UpdateRunInput) as T;
+    case 'run.setStage':
+      return store.setRunStage(p.id, p.stage as RunStage) as T;
+    case 'run.signOff':
+      return store.signOffRun(p.id, { decision: p.decision, approverName: p.approverName, note: p.note }) as T;
+    case 'run.delete':
+      return { deleted: store.deleteRun(p.id) } as T;
+
+    // packages
+    case 'package.list':
+      return store.listPackages() as T;
+    case 'package.get':
+      return store.getPackage(p.id) as T;
+    case 'package.create':
+      return store.createPackage(p as unknown as CreatePackageInput) as T;
+    case 'package.delete':
+      return { deleted: store.deletePackage(p.id) } as T;
+
+    // execution
+    case 'exec.get':
+      return store.getExecution(p.id) as T;
+    case 'exec.setStep': {
+      const patch = (p.patch ?? {}) as StepResultPatch;
+      const terminal: ExecutionStatus[] = ['PASS', 'FAIL', 'BLOCKED', 'SKIPPED', 'ENHANCEMENT'];
+      if (patch.status && terminal.includes(patch.status)) {
+        const gate = store.stepGate(p.stepResultId);
+        if (gate?.screenshotRequired && !gate.hasAttachment) {
+          throw new Error('This step requires a screenshot before it can be marked.');
+        }
+      }
+      return store.setStepResult(p.executionId, p.stepResultId, patch) as T;
+    }
+    case 'exec.addAttachment':
+      return store.addAttachment(p as unknown as AddAttachmentInput) as T;
+    case 'exec.deleteAttachment':
+      return store.deleteAttachment(p.id) as T;
+    case 'attachment.get':
+      return store.getAttachment(p.id) as T;
+    case 'exec.complete':
+      return store.completeExecution(p.id) as T;
+    case 'defect.create':
+      return store.createDefect(p.executionId, p.input as CreateDefectInput) as T;
+    case 'defect.linkJira':
+      return store.linkDefectJira(p.id, String(p.jiraIssueKey ?? '').trim().toUpperCase()) as T;
+    case 'defect.toJira':
+      throw new Error('Jira is not configured in the preview.');
+
+    // jira (not configured in mock)
+    case 'jira.options':
+      return { configured: false, issueTypes: [] } as T;
+    case 'jira.check':
+      return { configured: false, ok: false, status: 0, projectKey: 'DS', projectFound: false, issueTypes: [], issueTypeExists: false, requiredFields: [], message: 'Jira is not configured in the preview.' } as T;
+
+    // reporting
+    case 'report.dashboard':
+      return store.getDashboard((p.filters ?? {}) as DashboardFilters) as T;
+    case 'report.export':
+      return store.getReport((p.filters ?? {}) as DashboardFilters) as T;
+
+    // admin
+    case 'admin.listUsers':
+      return store.listUsers() as T;
+    case 'admin.setRole':
+      return store.setUserRole(p.accountId, p.role) as T;
+    case 'admin.createUser':
+      return store.createUser(p.email, p.displayName, p.role) as T;
+    case 'admin.resetPassword':
+      return store.resetUserPassword(p.accountId) as T;
+    case 'account.changePassword':
+      return { ok: true } as T;
+
     default:
       throw new Error(`mockInvoke: unhandled resolver key "${key}"`);
   }

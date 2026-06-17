@@ -37,6 +37,7 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'attachment.get': ALL,
   'report.dashboard': ALL,
   'report.export': ALL,
+  'meta.projects': ALL,
   'jira.check': ALL,
   'jira.options': ALL,
 

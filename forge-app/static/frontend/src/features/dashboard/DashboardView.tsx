@@ -17,6 +17,7 @@ import {
   YAxis,
 } from 'recharts';
 import { fetchReport, useDashboard, usePackages, useRuns } from '../../api/runs';
+import { useFolderTree, useProjects } from '../../api/repository';
 import { EXEC_STATUS_LABEL, RUN_STAGE_LABEL, TEST_TYPES, TEST_TYPE_LABELS, tcId } from '../../domain/types';
 import type { DashboardData, DashboardFilters, ExecutionStatus, ReportRow, TestType } from '../../domain/types';
 import { ExecBadge } from '../runs/ExecutionRunner';
@@ -78,6 +79,8 @@ const STATUS_COLOR: Record<ExecutionStatus, string> = {
 };
 
 export function DashboardView() {
+  const [projectKey, setProjectKey] = useState('');
+  const [folderId, setFolderId] = useState('');
   const [packageId, setPackageId] = useState('');
   const [runId, setRunId] = useState('');
   const [testType, setTestType] = useState<TestType | ''>('');
@@ -87,35 +90,73 @@ export function DashboardView() {
     () => ({
       ...(runId ? { runId } : packageId ? { packageId } : {}),
       ...(testType ? { testType } : {}),
+      ...(folderId ? { folderId } : {}),
     }),
-    [packageId, runId, testType],
+    [packageId, runId, testType, folderId],
   );
 
+  const projects = useProjects();
+  const appTree = useFolderTree(projectKey || undefined);
   const packages = usePackages();
   const runs = useRuns();
-  const dash = useDashboard(filters);
+  const dash = useDashboard(filters, projectKey || undefined);
 
   const scopeLabel = useMemo(() => {
     const parts: string[] = [];
+    if (projectKey) parts.push(`Project: ${projectKey}`);
+    if (folderId) parts.push(`App: ${appTree.data?.find((f) => f.id === folderId)?.name ?? folderId}`);
     if (runId) parts.push(`Run: ${runs.data?.find((r) => r.id === runId)?.name ?? runId}`);
     else if (packageId) parts.push(`Package: ${packages.data?.find((p) => p.id === packageId)?.name ?? packageId}`);
     if (testType) parts.push(`Type: ${TEST_TYPE_LABELS[testType]}`);
     return parts.length ? parts.join(' · ') : 'All runs';
-  }, [runId, packageId, testType, runs.data, packages.data]);
+  }, [projectKey, folderId, runId, packageId, testType, appTree.data, runs.data, packages.data]);
 
   const runExport = async () => {
     if (!dash.data) return;
     setExporting(true);
     try {
-      const rows = await fetchReport(filters);
+      const rows = await fetchReport(filters, projectKey || undefined);
       await exportResults(dash.data, rows, scopeLabel);
     } finally {
       setExporting(false);
     }
   };
 
+  const topFolders = appTree.data ?? [];
+
   const filterBar = (
     <div className="esp-toolbar" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+      <select
+        className="esp-select"
+        style={{ width: 'auto' }}
+        title="Filter by Jira project"
+        value={projectKey}
+        onChange={(e) => {
+          setProjectKey(e.target.value);
+          setFolderId(''); // applications are project-scoped; reset when project changes
+        }}
+      >
+        <option value="">All projects</option>
+        {(projects.data ?? []).map((pk) => (
+          <option key={pk} value={pk}>
+            {pk}
+          </option>
+        ))}
+      </select>
+      <select
+        className="esp-select"
+        style={{ width: 'auto' }}
+        title="Filter by application (top-level folder)"
+        value={folderId}
+        onChange={(e) => setFolderId(e.target.value)}
+      >
+        <option value="">All applications</option>
+        {topFolders.map((f) => (
+          <option key={f.id} value={f.id}>
+            {f.name}
+          </option>
+        ))}
+      </select>
       <select
         className="esp-select"
         style={{ width: 'auto' }}

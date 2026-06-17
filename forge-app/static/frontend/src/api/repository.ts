@@ -17,15 +17,25 @@ import type {
 } from '../domain/types';
 
 const keys = {
-  tree: ['repo', 'folderTree'] as const,
+  tree: (projectKey?: string) => ['repo', 'folderTree', projectKey ?? 'default'] as const,
   cases: (folderId?: string) => ['repo', 'cases', folderId ?? 'all'] as const,
   case: (id: string) => ['repo', 'case', id] as const,
+  projects: ['meta', 'projects'] as const,
 };
 
-export function useFolderTree() {
+export function useFolderTree(projectKey?: string) {
   return useQuery({
-    queryKey: keys.tree,
-    queryFn: () => invokeResolver<FolderNode[]>('repo.getFolderTree'),
+    queryKey: keys.tree(projectKey),
+    queryFn: () => invokeResolver<FolderNode[]>('repo.getFolderTree', projectKey ? { projectKey } : {}),
+  });
+}
+
+/** Distinct Jira project keys (for the dashboard project filter). */
+export function useProjects() {
+  return useQuery({
+    queryKey: keys.projects,
+    queryFn: () => invokeResolver<string[]>('meta.projects'),
+    staleTime: 5 * 60_000,
   });
 }
 
@@ -50,7 +60,7 @@ export function useCreateFolder() {
   return useMutation({
     mutationFn: (input: CreateFolderInput) =>
       invokeResolver<TestFolder>('repo.createFolder', { ...input }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.tree }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['repo', 'folderTree'] }),
   });
 }
 
@@ -60,7 +70,7 @@ export function useCreateCase() {
     mutationFn: (input: CreateTestCaseInput) =>
       invokeResolver<TestCase>('repo.createCase', { ...input }),
     onSuccess: (created) => {
-      qc.invalidateQueries({ queryKey: keys.tree });
+      qc.invalidateQueries({ queryKey: ['repo', 'folderTree'] });
       qc.invalidateQueries({ queryKey: keys.cases(created.folderId) });
     },
   });
@@ -84,7 +94,7 @@ export function useDeleteCase() {
     mutationFn: (id: string) => invokeResolver<{ deleted: boolean }>('repo.deleteCase', { id }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['repo', 'cases'] });
-      qc.invalidateQueries({ queryKey: keys.tree });
+      qc.invalidateQueries({ queryKey: ['repo', 'folderTree'] });
     },
   });
 }
@@ -95,7 +105,7 @@ export function useDuplicateCase() {
     mutationFn: (id: string) => invokeResolver<TestCase>('repo.duplicateCase', { id }),
     onSuccess: (copy) => {
       qc.invalidateQueries({ queryKey: keys.cases(copy.folderId) });
-      qc.invalidateQueries({ queryKey: keys.tree });
+      qc.invalidateQueries({ queryKey: ['repo', 'folderTree'] });
     },
   });
 }
@@ -107,7 +117,7 @@ export function useImportCases() {
       invokeResolver<ImportResult>('repo.importCases', { folderId, rows }),
     onSuccess: (_res, vars) => {
       qc.invalidateQueries({ queryKey: keys.cases(vars.folderId) });
-      qc.invalidateQueries({ queryKey: keys.tree });
+      qc.invalidateQueries({ queryKey: ['repo', 'folderTree'] });
     },
   });
 }

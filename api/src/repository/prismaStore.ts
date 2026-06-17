@@ -839,21 +839,50 @@ export class PrismaStore implements TestCaseStore {
   }
 
   /** Resolve the in-scope cycle ids + an execution `where` for the given filters. */
+  /** A folder id plus all of its descendants (for the application/folder filter). */
+  private async descendantFolderIds(folderId: string): Promise<string[]> {
+    const all = await prisma.testFolder.findMany({ select: { id: true, parentId: true } });
+    const childMap = new Map<string, string[]>();
+    for (const f of all) {
+      if (f.parentId) {
+        const kids = childMap.get(f.parentId) ?? [];
+        kids.push(f.id);
+        childMap.set(f.parentId, kids);
+      }
+    }
+    const out = [folderId];
+    const stack = [folderId];
+    while (stack.length) {
+      const cur = stack.pop() as string;
+      for (const child of childMap.get(cur) ?? []) {
+        out.push(child);
+        stack.push(child);
+      }
+    }
+    return out;
+  }
+
   private async scope(
-    projectKey: string,
+    projectKey: string | undefined,
     filters: DashboardFilters,
   ): Promise<{ cycleIds: string[]; execWhere: Prisma.TestExecutionWhereInput }> {
-    const cycleWhere: Prisma.TestCycleWhereInput = { testPlan: { projectKey } };
+    // No projectKey ⇒ all projects (the dashboard's "All projects" option).
+    const cycleWhere: Prisma.TestCycleWhereInput = projectKey ? { testPlan: { projectKey } } : {};
     if (filters.runId) cycleWhere.id = filters.runId;
     else if (filters.packageId) cycleWhere.packageId = filters.packageId;
     const cycles = await prisma.testCycle.findMany({ where: cycleWhere, select: { id: true } });
     const cycleIds = cycles.map((c) => c.id);
     const execWhere: Prisma.TestExecutionWhereInput = { testCycleId: { in: cycleIds } };
-    if (filters.testType) execWhere.testCase = { testType: filters.testType };
+
+    const testCaseWhere: Prisma.TestCaseWhereInput = {};
+    if (filters.testType) testCaseWhere.testType = filters.testType;
+    if (filters.folderId) testCaseWhere.folderId = { in: await this.descendantFolderIds(filters.folderId) };
+    if (Object.keys(testCaseWhere).length > 0) execWhere.testCase = testCaseWhere;
+
     return { cycleIds, execWhere };
   }
 
-  async getDashboard(projectKey = DEFAULT_PROJECT, filters: DashboardFilters = {}): Promise<DashboardData> {
+  async getDashboard(projectKey?: string, filters: DashboardFilters = {}): Promise<DashboardData> {
     const totalCases = await prisma.testCase.count();
     const { cycleIds, execWhere } = await this.scope(projectKey, filters);
     const defectCount = await prisma.defect.count({ where: { execution: execWhere } });
@@ -930,7 +959,7 @@ export class PrismaStore implements TestCaseStore {
     };
   }
 
-  async getReport(projectKey = DEFAULT_PROJECT, filters: DashboardFilters = {}): Promise<ReportRow[]> {
+  async getReport(projectKey?: string, filters: DashboardFilters = {}): Promise<ReportRow[]> {
     const { execWhere } = await this.scope(projectKey, filters);
     const execs = await prisma.testExecution.findMany({
       where: execWhere,

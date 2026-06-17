@@ -25,6 +25,7 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'attachment.get': ALL,
   'report.dashboard': ALL,
   'report.export': ALL,
+  'meta.projects': ALL,
   'jira.check': ALL,
   'jira.options': ALL,
 
@@ -72,3 +73,5 @@ export const ROLE_LABELS: Record<Role, string> = {
   FIELD_OPERATOR: 'Field Operator',
   OBSERVER: 'Observer',
 };
+
+export const ROLES: Role[] = ['SUPER_ADMIN', 'TEST_MANAGER', 'TEST_AUTHOR', 'FIELD_OPERATOR', 'OBSERVER'];

@@ -9,9 +9,22 @@
  */
 
 import { Router, type Request, type Response } from 'express';
+import { Role } from '@prisma/client';
 import { issueToken } from '../lib/auth';
 import { authenticate, resolveRole } from '../lib/identity';
 import { canInvoke } from '../repository/permissions';
+
+/**
+ * Resolve the effective role for a request. A SUPER_ADMIN may "view as" a lesser
+ * role via the `x-testforge-view-as` header — this only ever DOWNGRADES (the
+ * header is ignored unless the real role is SUPER_ADMIN), so it can't escalate.
+ */
+export function effectiveRole(realRole: Role, viewAsHeader: string | undefined): Role {
+  if (realRole === Role.SUPER_ADMIN && viewAsHeader && viewAsHeader in Role) {
+    return viewAsHeader as Role;
+  }
+  return realRole;
+}
 import { requireAuth } from '../middleware/requireAuth';
 import { getStore } from '../repository/prismaStore';
 import { dispatch, DispatchError } from '../repository/dispatch';
@@ -43,7 +56,7 @@ apiRouter.post('/invoke', requireAuth, async (req: Request, res: Response) => {
     return;
   }
   const accountId = req.accountId ?? 'pilot-user';
-  const role = await resolveRole(accountId);
+  const role = effectiveRole(await resolveRole(accountId), req.header('x-testforge-view-as'));
   req.userRole = role;
 
   if (!canInvoke(body.key, role)) {

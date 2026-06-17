@@ -6,6 +6,7 @@
 import { Suspense, lazy, useState } from 'react';
 import Spinner from '@atlaskit/spinner';
 import { useAuth } from './context/AuthContext';
+import { ROLES, ROLE_LABELS, type Role } from './api/permissions';
 import { STANDALONE, WEB_MODE } from './api/client';
 import { Logo } from './components/Logo';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
@@ -70,6 +71,22 @@ export function App() {
           </span>
         ) : null}
         <span className="esp-user">{auth.displayName ?? auth.accountId ?? 'Unknown user'}</span>
+        {auth.isSuperAdmin ? (
+          <select
+            className="esp-select"
+            style={{ width: 'auto', marginLeft: 8 }}
+            title="View the app as another role"
+            value={auth.viewAsRole ?? ''}
+            onChange={(e) => auth.setViewAsRole((e.target.value || null) as Role | null)}
+          >
+            <option value="">View as: Yourself (Super Admin)</option>
+            {ROLES.filter((r) => r !== 'SUPER_ADMIN').map((r) => (
+              <option key={r} value={r}>
+                View as: {ROLE_LABELS[r]}
+              </option>
+            ))}
+          </select>
+        ) : null}
         {WEB_MODE ? (
           <button
             className="esp-btn esp-btn-ghost"
@@ -80,6 +97,26 @@ export function App() {
           </button>
         ) : null}
       </header>
+      {auth.viewAsRole ? (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '7px 16px',
+            fontSize: 13,
+            background: 'rgba(240,138,75,0.14)',
+            color: 'var(--esp-orange-strong)',
+            borderBottom: '1px solid var(--esp-border)',
+          }}
+        >
+          👁 Viewing as <strong>{ROLE_LABELS[auth.viewAsRole]}</strong> — affordances and actions are limited to this
+          role.
+          <button className="esp-btn esp-btn-ghost" style={{ marginLeft: 10 }} onClick={() => auth.setViewAsRole(null)}>
+            Exit
+          </button>
+        </div>
+      ) : null}
       {showChangePw ? <ChangePasswordModal onClose={() => setShowChangePw(false)} /> : null}
       {view === 'repository' || (view === 'admin' && !isAdmin) || (view === 'review' && !isManager) ? (
         <RepositoryView />

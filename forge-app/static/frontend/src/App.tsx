@@ -3,7 +3,7 @@
  * Repository (author) · Test Runs (execute) · Dashboard (report).
  */
 
-import { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import Spinner from '@atlaskit/spinner';
 import { useAuth } from './context/AuthContext';
 import { ROLE_LABELS } from './api/permissions';
@@ -36,12 +36,33 @@ const NAV: { key: View; label: string; adminOnly?: boolean; managerOnly?: boolea
   { key: 'admin', label: 'User Roles', adminOnly: true },
 ];
 
+const VIEWS: View[] = ['repository', 'runs', 'review', 'packages', 'dashboard', 'admin'];
+
+/** Active view from the URL hash (e.g. "#dashboard"), so tabs are linkable and
+ *  survive a refresh. Falls back to Repository for an empty/unknown hash. */
+function viewFromHash(): View {
+  if (typeof window === 'undefined') return 'repository';
+  const h = window.location.hash.replace(/^#\/?/, '') as View;
+  return VIEWS.includes(h) ? h : 'repository';
+}
+
 export function App() {
   const auth = useAuth();
-  const [view, setView] = useState<View>('repository');
+  const [view, setViewState] = useState<View>(viewFromHash);
   const isAdmin = auth.hasRole('SUPER_ADMIN');
   const isManager = auth.hasRole('SUPER_ADMIN', 'TEST_MANAGER');
   const [showChangePw, setShowChangePw] = useState(false);
+
+  // Keep the hash and the active view in sync (covers nav clicks + back/forward).
+  useEffect(() => {
+    const onHash = () => setViewState(viewFromHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  const setView = (v: View) => {
+    if (window.location.hash.replace(/^#\/?/, '') !== v) window.location.hash = v;
+    setViewState(v);
+  };
 
   return (
     <div className="esp-app">

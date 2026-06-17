@@ -1,7 +1,7 @@
 /** The execution runner — step through a test case, mark Pass/Fail/Blocked/Skip
  *  per step, record actual results, and complete the execution. */
 
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import Spinner from '@atlaskit/spinner';
 import { Modal } from '../../components/ui';
 import {
@@ -91,11 +91,7 @@ export function ExecutionRunner({
           <Spinner size="medium" />
         </div>
       ) : (
-        <ExecutionBody
-          data={data}
-          runId={runId}
-          onCompleteNext={() => complete.mutate(executionId, { onSuccess: onClose })}
-        />
+        <ExecutionBody data={data} runId={runId} />
       )}
     </Modal>
   );
@@ -104,32 +100,12 @@ export function ExecutionRunner({
 /** Presentational execution detail — case header, per-step marking, attachments,
  *  and defects. Hosted by the single-case modal (ExecutionRunner) and the
  *  continuous RunPlayer; the host owns data fetching and the complete/navigate
- *  controls. `onCompleteNext` (when given) is what the Enter shortcut fires. */
-export function ExecutionBody({
-  data,
-  runId,
-  onCompleteNext,
-}: {
-  data: ExecutionDetail;
-  runId: string;
-  onCompleteNext?: () => void;
-}) {
+ *  controls. */
+export function ExecutionBody({ data, runId }: { data: ExecutionDetail; runId: string }) {
   const setStep = useSetStepResult(runId);
   const steps = data.steps;
-  const [activeStep, setActiveStep] = useState(0);
-  const activeRef = useRef<HTMLDivElement>(null);
 
   const isGated = (s: ExecutionDetail['steps'][number]) => s.screenshotRequired && s.attachments.length === 0;
-
-  // Reset focus to the top step when the host swaps in a different case.
-  useEffect(() => {
-    setActiveStep(0);
-  }, [data.id]);
-
-  // Keep the active step in view as it moves under keyboard control.
-  useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: 'nearest' });
-  }, [activeStep]);
 
   const passAllRemaining = () => {
     for (const s of steps) {
@@ -138,41 +114,6 @@ export function ExecutionBody({
       }
     }
   };
-
-  // Keyboard: 1–5 mark the active step (then advance), ↑/↓ (or j/k) move, Enter
-  // completes & advances. Ignored while a text field / select has focus so typing
-  // notes never triggers a mark.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = document.activeElement?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (e.key === 'Enter') {
-        if (onCompleteNext) {
-          e.preventDefault();
-          onCompleteNext();
-        }
-        return;
-      }
-      if (steps.length === 0) return;
-      if (e.key === 'ArrowDown' || e.key === 'j') {
-        e.preventDefault();
-        setActiveStep((i) => Math.min(i + 1, steps.length - 1));
-      } else if (e.key === 'ArrowUp' || e.key === 'k') {
-        e.preventDefault();
-        setActiveStep((i) => Math.max(i - 1, 0));
-      } else if (/^[1-5]$/.test(e.key)) {
-        const status = STEP_STATUSES[Number(e.key) - 1];
-        const step = steps[activeStep];
-        if (status && step && !isGated(step)) {
-          e.preventDefault();
-          setStep.mutate({ executionId: data.id, stepResultId: step.id, patch: { status } });
-          setActiveStep((i) => Math.min(i + 1, steps.length - 1));
-        }
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [steps, activeStep, onCompleteNext, data.id, setStep]);
 
   return (
     <>
@@ -195,28 +136,17 @@ export function ExecutionBody({
           This case has no steps. Mark its overall status with “Complete &amp; next”.
         </p>
       ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+        <div style={{ marginBottom: 10 }}>
           <button className="esp-btn esp-btn-secondary" onClick={passAllRemaining}>
             ✓ Pass all remaining
           </button>
-          <span className="esp-muted" style={{ fontSize: 12 }}>
-            Keys: <strong>1–5</strong> mark · <strong>↑/↓</strong> move{onCompleteNext ? ' · ' : ''}
-            {onCompleteNext ? <><strong>Enter</strong> complete &amp; next</> : null}
-          </span>
         </div>
       )}
 
-      {steps.map((s, i) => {
+      {steps.map((s) => {
         const gated = isGated(s);
-        const active = i === activeStep;
         return (
-          <div
-            className="esp-rstep"
-            key={s.id}
-            ref={active ? activeRef : undefined}
-            onClick={() => setActiveStep(i)}
-            style={active ? { boxShadow: '0 0 0 2px var(--esp-orange-strong)' } : undefined}
-          >
+          <div className="esp-rstep" key={s.id}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <span className="esp-step-num">{s.order}</span>
               <ExecBadge status={s.status} />

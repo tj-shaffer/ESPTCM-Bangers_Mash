@@ -26,10 +26,41 @@ function isStandalone(): boolean {
 
 export const STANDALONE = isStandalone() && !WEB;
 export const WEB_MODE = WEB;
+// OAuth ("Log in with Atlassian") is the default in web mode; set
+// VITE_OAUTH_ENABLED=false to hide the button and use only the password gate.
+export const OAUTH_ENABLED = WEB && import.meta.env.VITE_OAUTH_ENABLED !== 'false';
 
 // ---------- token + auth (web mode) ----------
 
 const TOKEN_KEY = 'tf_token';
+
+/**
+ * After an Atlassian OAuth round-trip the API redirects back with the session
+ * token in the URL fragment (`#token=…`). Capture it once on load, persist it,
+ * and scrub the fragment so it isn't left in history. Returns true if a token
+ * was captured this load.
+ */
+export function captureTokenFromHash(): boolean {
+  try {
+    const hash = window.location.hash.replace(/^#/, '');
+    if (!hash) return false;
+    const params = new URLSearchParams(hash);
+    const token = params.get('token');
+    if (token) {
+      setToken(token);
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+/** Send the browser to the Atlassian consent screen. */
+export function loginWithAtlassian(): void {
+  window.location.href = `${API_BASE}/api/auth/login`;
+}
 
 export function getToken(): string | null {
   try {

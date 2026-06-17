@@ -10,8 +10,11 @@ import { ENVIRONMENTS, TEAM_MEMBERS, tcId } from '../../domain/types';
 import type { Environment, TestCaseSummary } from '../../domain/types';
 import { Modal, Toast } from '../../components/ui';
 import { ExecBadge, ExecutionRunner } from './ExecutionRunner';
+import { useAuth } from '../../context/AuthContext';
 
 export function RunsView() {
+  const auth = useAuth();
+  const canManageRuns = auth.can('run.create');
   const runs = useRuns();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [runnerExecId, setRunnerExecId] = useState<string | null>(null);
@@ -58,9 +61,11 @@ export function RunsView() {
       <aside className="esp-sidebar">
         <div className="esp-sidebar-head">
           <span className="esp-sidebar-title">Test Runs</span>
-          <button className="esp-btn esp-btn-ghost" onClick={() => setShowNew(true)}>
-            + New run
-          </button>
+          {canManageRuns ? (
+            <button className="esp-btn esp-btn-ghost" onClick={() => setShowNew(true)}>
+              + New run
+            </button>
+          ) : null}
         </div>
         {assignees.length > 0 ? (
           <select
@@ -115,21 +120,23 @@ export function RunsView() {
                 <span className="esp-badge esp-badge-soft">{detail.environment}</span>
                 <ExecBadge status={detail.status} />
                 <div className="esp-header-spacer" />
-                <button
-                  className="esp-btn esp-btn-danger"
-                  onClick={() => {
-                    if (window.confirm(`Delete run "${detail.name}"? This removes its execution results.`)) {
-                      deleteRun.mutate(detail.id, {
-                        onSuccess: () => {
-                          setSelectedRunId(null);
-                          flash('Run deleted');
-                        },
-                      });
-                    }
-                  }}
-                >
-                  Delete run
-                </button>
+                {canManageRuns ? (
+                  <button
+                    className="esp-btn esp-btn-danger"
+                    onClick={() => {
+                      if (window.confirm(`Delete run "${detail.name}"? This removes its execution results.`)) {
+                        deleteRun.mutate(detail.id, {
+                          onSuccess: () => {
+                            setSelectedRunId(null);
+                            flash('Run deleted');
+                          },
+                        });
+                      }
+                    }}
+                  >
+                    Delete run
+                  </button>
+                ) : null}
               </div>
 
               <div className="esp-list">

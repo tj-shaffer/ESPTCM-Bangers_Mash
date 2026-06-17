@@ -19,19 +19,24 @@ const PackagesView = lazy(() =>
 const DashboardView = lazy(() =>
   import('./features/dashboard/DashboardView').then((m) => ({ default: m.DashboardView })),
 );
+const AdminView = lazy(() =>
+  import('./features/admin/AdminView').then((m) => ({ default: m.AdminView })),
+);
 
-type View = 'repository' | 'runs' | 'packages' | 'dashboard';
+type View = 'repository' | 'runs' | 'packages' | 'dashboard' | 'admin';
 
-const NAV: { key: View; label: string }[] = [
+const NAV: { key: View; label: string; adminOnly?: boolean }[] = [
   { key: 'repository', label: 'Repository' },
   { key: 'runs', label: 'Test Runs' },
   { key: 'packages', label: 'Packages' },
   { key: 'dashboard', label: 'Dashboard' },
+  { key: 'admin', label: 'User Roles', adminOnly: true },
 ];
 
 export function App() {
   const auth = useAuth();
   const [view, setView] = useState<View>('repository');
+  const isAdmin = auth.hasRole('SUPER_ADMIN');
 
   return (
     <div className="esp-app">
@@ -41,7 +46,9 @@ export function App() {
           Bangers &amp; Mash
         </div>
         <nav className="esp-nav">
-          {NAV.filter((n) => n.key === 'repository' || !STANDALONE).map((n) => (
+          {NAV.filter((n) => n.key === 'repository' || !STANDALONE)
+            .filter((n) => !n.adminOnly || isAdmin)
+            .map((n) => (
             <button
               key={n.key}
               className={`esp-nav-item${view === n.key ? ' active' : ''}`}
@@ -60,7 +67,7 @@ export function App() {
         ) : null}
         <span className="esp-user">{auth.displayName ?? auth.accountId ?? 'Unknown user'}</span>
       </header>
-      {view === 'repository' ? (
+      {view === 'repository' || (view === 'admin' && !isAdmin) ? (
         <RepositoryView />
       ) : (
         <Suspense
@@ -70,7 +77,15 @@ export function App() {
             </div>
           }
         >
-          {view === 'runs' ? <RunsView /> : view === 'packages' ? <PackagesView /> : <DashboardView />}
+          {view === 'runs' ? (
+            <RunsView />
+          ) : view === 'packages' ? (
+            <PackagesView />
+          ) : view === 'admin' ? (
+            <AdminView />
+          ) : (
+            <DashboardView />
+          )}
         </Suspense>
       )}
     </div>

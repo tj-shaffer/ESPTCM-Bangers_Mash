@@ -28,6 +28,7 @@ interface StepDraft {
   action: string;
   testData: string;
   expectedResult: string;
+  screenshotRequired: boolean;
 }
 
 interface FormState {
@@ -51,6 +52,8 @@ interface Props {
   onCancelNew?: () => void;
   onDuplicate?: () => void;
   onDelete?: () => void;
+  /** Read-only viewers (e.g. OBSERVER) — hide the save action. */
+  readOnly?: boolean;
 }
 
 let keyCounter = 1;
@@ -66,7 +69,7 @@ function toForm(tc: TestCase | null): FormState {
       priority: 'MEDIUM',
       status: 'DRAFT',
       vendors: [],
-      steps: [{ _key: nextKey(), action: '', testData: '', expectedResult: '' }],
+      steps: [{ _key: nextKey(), action: '', testData: '', expectedResult: '', screenshotRequired: false }],
     };
   }
   return {
@@ -84,8 +87,9 @@ function toForm(tc: TestCase | null): FormState {
             action: s.action,
             testData: s.testData ?? '',
             expectedResult: s.expectedResult,
+            screenshotRequired: s.screenshotRequired ?? false,
           }))
-        : [{ _key: nextKey(), action: '', testData: '', expectedResult: '' }],
+        : [{ _key: nextKey(), action: '', testData: '', expectedResult: '', screenshotRequired: false }],
   };
 }
 
@@ -98,6 +102,7 @@ export function TestCaseEditor({
   onCancelNew,
   onDuplicate,
   onDelete,
+  readOnly = false,
 }: Props) {
   const [form, setForm] = useState<FormState>(() => toForm(testCase));
   const [dirty, setDirty] = useState(isNew);
@@ -125,7 +130,7 @@ export function TestCaseEditor({
     set('steps', form.steps.map((s) => (s._key === key ? { ...s, ...patch } : s)));
 
   const addStep = () =>
-    set('steps', [...form.steps, { _key: nextKey(), action: '', testData: '', expectedResult: '' }]);
+    set('steps', [...form.steps, { _key: nextKey(), action: '', testData: '', expectedResult: '', screenshotRequired: false }]);
 
   const removeStep = (key: number) => set('steps', form.steps.filter((s) => s._key !== key));
 
@@ -157,6 +162,7 @@ export function TestCaseEditor({
           action: s.action,
           testData: s.testData || undefined,
           expectedResult: s.expectedResult,
+          screenshotRequired: s.screenshotRequired,
         })),
     });
     setDirty(false);
@@ -312,14 +318,26 @@ export function TestCaseEditor({
               value={s.expectedResult}
               onChange={(e) => setStep(s._key, { expectedResult: e.target.value })}
             />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={s.screenshotRequired}
+                onChange={(e) => setStep(s._key, { screenshotRequired: e.target.checked })}
+              />
+              📎 Require a screenshot to mark this step
+            </label>
           </div>
         ))}
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-        <button className="esp-btn esp-btn-primary" onClick={submit} disabled={!canSave}>
-          {saving ? 'Saving…' : isNew ? 'Create test case' : 'Save changes'}
-        </button>
+        {readOnly ? (
+          <span className="esp-muted" style={{ fontSize: 12 }}>Read-only — your role can’t edit test cases.</span>
+        ) : (
+          <button className="esp-btn esp-btn-primary" onClick={submit} disabled={!canSave}>
+            {saving ? 'Saving…' : isNew ? 'Create test case' : 'Save changes'}
+          </button>
+        )}
         {isNew && onCancelNew ? (
           <button className="esp-btn esp-btn-secondary" onClick={onCancelNew} disabled={saving}>
             Cancel

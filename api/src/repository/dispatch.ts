@@ -5,19 +5,26 @@
  * interchangeable behind the same frontend.
  */
 
+import { Role } from '@prisma/client';
 import type { TestCaseStore } from './store';
+import { prisma } from '../db/prisma';
 import { jiraCheck, jiraConfigured, jiraCreateProblem, jiraOptions } from '../services/jira';
 import type {
+  AddAttachmentInput,
   CreateDefectInput,
   CreateFolderInput,
   CreatePackageInput,
   CreateRunInput,
   CreateTestCaseInput,
+  ExecutionStatus,
   ImportedCaseRow,
   StepResultPatch,
   UpdateRunInput,
   UpdateTestCaseInput,
 } from '../domain/types';
+
+/** Marking a step to one of these requires a screenshot when the step demands one. */
+const TERMINAL_STATUSES: ExecutionStatus[] = ['PASS', 'FAIL', 'BLOCKED', 'SKIPPED', 'ENHANCEMENT'];
 
 export class DispatchError extends Error {
   constructor(
@@ -34,10 +41,21 @@ export async function dispatch(
   key: string,
   payload: Record<string, unknown>,
   accountId: string,
+  role: Role = Role.OBSERVER,
 ): Promise<unknown> {
   switch (key) {
-    case 'getContext':
-      return { accountId, displayName: 'Pilot User', currentIssueKey: null };
+    case 'getContext': {
+      const user = await prisma.userRole.findUnique({
+        where: { atlassianAccountId: accountId },
+        select: { displayName: true },
+      });
+      return {
+        accountId,
+        displayName: user?.displayName ?? accountId,
+        role,
+        currentIssueKey: null,
+      };
+    }
 
     case 'repo.getFolderTree':
       return store.getFolderTree(payload.projectKey as string | undefined);
@@ -164,9 +182,40 @@ export async function dispatch(
         patch?: StepResultPatch;
       };
       if (!executionId || !stepResultId) throw new DispatchError('executionId and stepResultId are required');
+      // Screenshot gate: a step the builder marked screenshot-required can't be
+      // set to a disposition until a screenshot is attached. See ENHANCEMENTS #6.
+      if (patch?.status && TERMINAL_STATUSES.includes(patch.status)) {
+        const gate = await store.getStepResultGate(stepResultId);
+        if (gate?.screenshotRequired && !gate.hasAttachment) {
+          throw new DispatchError('This step requires a screenshot before it can be marked.', 400);
+        }
+      }
       const updated = await store.setStepResult(executionId, stepResultId, patch ?? {});
       if (!updated) throw new DispatchError('Execution not found', 404);
       return updated;
+    }
+
+    case 'exec.addAttachment': {
+      const input = payload as unknown as AddAttachmentInput;
+      if (!input.stepResultId) throw new DispatchError('stepResultId is required');
+      if (!input.dataBase64) throw new DispatchError('Attachment content is required');
+      const res = await store.addAttachment(input, accountId);
+      if (!res) throw new DispatchError('Step result not found', 404);
+      return res;
+    }
+
+    case 'exec.deleteAttachment': {
+      const id = payload.id as string | undefined;
+      if (!id) throw new DispatchError('Attachment id is required');
+      const res = await store.deleteAttachment(id);
+      if (!res) throw new DispatchError('Attachment not found', 404);
+      return res;
+    }
+
+    case 'attachment.get': {
+      const id = payload.id as string | undefined;
+      if (!id) throw new DispatchError('Attachment id is required');
+      return store.getAttachment(id);
     }
 
     case 'exec.complete': {
@@ -214,6 +263,42 @@ export async function dispatch(
 
     case 'report.dashboard':
       return store.getDashboard(payload.projectKey as string | undefined);
+
+    // ---------- administration (SUPER_ADMIN only; gated in permissions map) ----------
+
+    case 'admin.listUsers':
+      return prisma.userRole.findMany({
+        orderBy: { displayName: 'asc' },
+        select: {
+          atlassianAccountId: true,
+          displayName: true,
+          email: true,
+          role: true,
+          updatedAt: true,
+        },
+      });
+
+    case 'admin.setRole': {
+      const targetAccountId = payload.accountId as string | undefined;
+      const nextRole = payload.role as string | undefined;
+      if (!targetAccountId) throw new DispatchError('accountId is required');
+      if (!nextRole || !(nextRole in Role)) throw new DispatchError('A valid role is required');
+      const target = await prisma.userRole.findUnique({
+        where: { atlassianAccountId: targetAccountId },
+        select: { role: true },
+      });
+      if (!target) throw new DispatchError('User not found', 404);
+      // Guard against removing the last super admin (lockout protection).
+      if (target.role === Role.SUPER_ADMIN && nextRole !== Role.SUPER_ADMIN) {
+        const admins = await prisma.userRole.count({ where: { role: Role.SUPER_ADMIN } });
+        if (admins <= 1) throw new DispatchError('Cannot demote the last super admin', 400);
+      }
+      return prisma.userRole.update({
+        where: { atlassianAccountId: targetAccountId },
+        data: { role: nextRole as Role },
+        select: { atlassianAccountId: true, displayName: true, email: true, role: true },
+      });
+    }
 
     default:
       throw new DispatchError(`Unknown invoke key "${key}"`, 404);

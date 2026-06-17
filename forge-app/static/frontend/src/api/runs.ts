@@ -4,6 +4,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { invokeResolver } from './client';
 import type {
+  AddAttachmentInput,
+  AttachmentContent,
   CreateDefectInput,
   CreatePackageInput,
   CreateRunInput,
@@ -136,6 +138,33 @@ export function useSetStepResult(runId: string) {
       qc.invalidateQueries({ queryKey: keys.dashboard });
     },
   });
+}
+
+export function useAddAttachment(runId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AddAttachmentInput) => invokeResolver<ExecutionDetail>('exec.addAttachment', { ...input }),
+    onSuccess: (exec) => {
+      qc.setQueryData(keys.exec(exec.id), exec);
+      qc.invalidateQueries({ queryKey: keys.run(runId) });
+    },
+  });
+}
+
+export function useDeleteAttachment(runId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => invokeResolver<ExecutionDetail>('exec.deleteAttachment', { id }),
+    onSuccess: (exec) => {
+      qc.setQueryData(keys.exec(exec.id), exec);
+      qc.invalidateQueries({ queryKey: keys.run(runId) });
+    },
+  });
+}
+
+/** Fetch an attachment's content (base64) on demand — for preview/download. */
+export function fetchAttachment(id: string): Promise<AttachmentContent | null> {
+  return invokeResolver<AttachmentContent | null>('attachment.get', { id });
 }
 
 export function useCompleteExecution(runId: string) {

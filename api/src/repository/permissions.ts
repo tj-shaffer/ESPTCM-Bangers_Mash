@@ -1,0 +1,69 @@
+/**
+ * Dispatch-key → allowed-roles map. The pilot funnels everything through one
+ * route (/api/invoke → dispatch), so authorization is enforced per invoke key
+ * rather than per Express route. The frontend mirrors these tiers to gate the
+ * UI, but THIS is the source of truth — the server always re-checks.
+ *
+ * Keys absent from the map are denied by default (fail closed).
+ */
+
+import { Role } from '@prisma/client';
+
+const ALL: Role[] = [
+  Role.SUPER_ADMIN,
+  Role.TEST_MANAGER,
+  Role.TEST_AUTHOR,
+  Role.FIELD_OPERATOR,
+  Role.OBSERVER,
+];
+const EXECUTE: Role[] = [Role.SUPER_ADMIN, Role.TEST_MANAGER, Role.TEST_AUTHOR, Role.FIELD_OPERATOR];
+const AUTHOR: Role[] = [Role.SUPER_ADMIN, Role.TEST_MANAGER, Role.TEST_AUTHOR];
+const ADMIN: Role[] = [Role.SUPER_ADMIN];
+
+export const PERMISSIONS: Record<string, Role[]> = {
+  // ---------- read (everyone, incl. OBSERVER) ----------
+  getContext: ALL,
+  'repo.getFolderTree': ALL,
+  'repo.listCases': ALL,
+  'repo.getCase': ALL,
+  'run.list': ALL,
+  'run.get': ALL,
+  'package.list': ALL,
+  'package.get': ALL,
+  'exec.get': ALL,
+  'attachment.get': ALL,
+  'report.dashboard': ALL,
+  'jira.check': ALL,
+  'jira.options': ALL,
+
+  // ---------- execution (field operators and up) ----------
+  'exec.setStep': EXECUTE,
+  'exec.addAttachment': EXECUTE,
+  'exec.deleteAttachment': EXECUTE,
+  'exec.complete': EXECUTE,
+  'defect.create': EXECUTE,
+  'defect.toJira': EXECUTE,
+
+  // ---------- authoring (authors, managers, super admins) ----------
+  'repo.createFolder': AUTHOR,
+  'repo.createCase': AUTHOR,
+  'repo.updateCase': AUTHOR,
+  'repo.deleteCase': AUTHOR,
+  'repo.duplicateCase': AUTHOR,
+  'repo.importCases': AUTHOR,
+  'run.create': AUTHOR,
+  'run.update': AUTHOR,
+  'run.delete': AUTHOR,
+  'package.create': AUTHOR,
+  'package.delete': AUTHOR,
+
+  // ---------- administration (super admin only) ----------
+  'admin.listUsers': ADMIN,
+  'admin.setRole': ADMIN,
+};
+
+/** True if `role` may invoke `key`. Unknown keys fail closed. */
+export function canInvoke(key: string, role: Role): boolean {
+  const allowed = PERMISSIONS[key];
+  return allowed !== undefined && allowed.includes(role);
+}

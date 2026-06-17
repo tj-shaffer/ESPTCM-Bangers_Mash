@@ -27,6 +27,7 @@ const STATUS_COLOR: Record<ExecutionStatus, string> = {
   IN_PROGRESS: '#4F94BC',
   NOT_STARTED: '#8FA1AD',
   SKIPPED: '#B4B2A9',
+  ENHANCEMENT: '#6B4FB8',
 };
 
 export function DashboardView() {

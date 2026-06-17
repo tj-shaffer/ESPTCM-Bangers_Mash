@@ -43,6 +43,8 @@ export interface TestStep {
   action: string;
   testData?: string;
   expectedResult: string;
+  /** When true, executing this step requires a screenshot attachment. */
+  screenshotRequired?: boolean;
 }
 
 export interface TestFolder {
@@ -99,6 +101,7 @@ export interface TestStepInput {
   action: string;
   testData?: string;
   expectedResult: string;
+  screenshotRequired?: boolean;
 }
 
 export interface CreateFolderInput {
@@ -149,7 +152,14 @@ export function tcId(displayId: number): string {
 
 // ---------- execution / runs / reporting ----------
 
-export type ExecutionStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'PASS' | 'FAIL' | 'BLOCKED' | 'SKIPPED';
+export type ExecutionStatus =
+  | 'NOT_STARTED'
+  | 'IN_PROGRESS'
+  | 'PASS'
+  | 'FAIL'
+  | 'BLOCKED'
+  | 'SKIPPED'
+  | 'ENHANCEMENT';
 
 export const EXEC_STATUS_LABEL: Record<ExecutionStatus, string> = {
   NOT_STARTED: 'Not started',
@@ -158,6 +168,7 @@ export const EXEC_STATUS_LABEL: Record<ExecutionStatus, string> = {
   FAIL: 'Fail',
   BLOCKED: 'Blocked',
   SKIPPED: 'Skipped',
+  ENHANCEMENT: 'Nice to have',
 };
 
 export interface CreateRunInput {
@@ -254,6 +265,29 @@ export interface TestRunDetail {
   executions: RunExecutionSummary[];
 }
 
+export interface AttachmentView {
+  id: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+export interface AttachmentContent {
+  id: string;
+  filename: string;
+  contentType: string;
+  /** Base64 (no data: prefix). */
+  dataBase64: string;
+}
+
+export interface AddAttachmentInput {
+  stepResultId: string;
+  filename: string;
+  contentType: string;
+  dataBase64: string;
+}
+
 export interface ExecutionStepResultView {
   id: string;
   order: number;
@@ -263,6 +297,9 @@ export interface ExecutionStepResultView {
   status: ExecutionStatus;
   actualResult?: string;
   notes?: string;
+  /** Builder set this step to require a screenshot before it can be marked. */
+  screenshotRequired: boolean;
+  attachments: AttachmentView[];
 }
 
 export interface ExecutionDetail {

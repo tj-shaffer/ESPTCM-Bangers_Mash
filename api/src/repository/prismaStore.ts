@@ -3,8 +3,10 @@
  */
 
 import { prisma } from '../db/prisma';
-import { DEFAULT_PROJECT, type DefectRecord, type TestCaseStore } from './store';
+import { DEFAULT_PROJECT, type DefectRecord, type StepResultGate, type TestCaseStore } from './store';
 import type {
+  AddAttachmentInput,
+  AttachmentContent,
   CreateDefectInput,
   CreateFolderInput,
   CreatePackageInput,
@@ -47,7 +49,9 @@ function rollup(statuses: ExecutionStatus[]): ExecutionStatus {
   if (statuses.includes('FAIL')) return 'FAIL';
   if (statuses.includes('BLOCKED')) return 'BLOCKED';
   if (statuses.every((s) => s === 'NOT_STARTED')) return 'NOT_STARTED';
-  if (statuses.every((s) => s === 'PASS' || s === 'SKIPPED')) return 'PASS';
+  // ENHANCEMENT ("nice to have") is non-blocking — a fully-marked run of
+  // passes/skips/enhancements still rolls up to PASS.
+  if (statuses.every((s) => s === 'PASS' || s === 'SKIPPED' || s === 'ENHANCEMENT')) return 'PASS';
   return 'IN_PROGRESS';
 }
 
@@ -98,6 +102,7 @@ type StepRow = {
   action: string;
   testData: string | null;
   expectedResult: string;
+  screenshotRequired?: boolean;
 };
 
 type CaseRow = {
@@ -141,6 +146,7 @@ function mapStep(s: StepRow): TestStep {
     action: s.action,
     testData: s.testData ?? undefined,
     expectedResult: s.expectedResult,
+    screenshotRequired: s.screenshotRequired ?? false,
   };
 }
 
@@ -175,6 +181,7 @@ function stepCreateData(steps: TestStepInput[] | undefined) {
       action: s.action ?? '',
       testData: s.testData?.trim() ? s.testData : null,
       expectedResult: s.expectedResult ?? '',
+      screenshotRequired: !!s.screenshotRequired,
     }));
 }
 
@@ -599,7 +606,15 @@ export class PrismaStore implements TestCaseStore {
       include: {
         testCase: { select: { displayId: true, title: true, objective: true, preconditions: true } },
         testCycle: { select: { id: true, name: true } },
-        stepResults: { orderBy: { stepOrder: 'asc' } },
+        stepResults: {
+          orderBy: { stepOrder: 'asc' },
+          include: {
+            attachments: {
+              orderBy: { createdAt: 'asc' },
+              select: { id: true, filename: true, contentType: true, sizeBytes: true, createdAt: true },
+            },
+          },
+        },
         defects: { orderBy: { createdAt: 'asc' } },
       },
     });
@@ -618,6 +633,14 @@ export class PrismaStore implements TestCaseStore {
         status: r.status as ExecutionStatus,
         actualResult: r.actualResult ?? undefined,
         notes: r.notes ?? undefined,
+        screenshotRequired: ts?.screenshotRequired ?? false,
+        attachments: r.attachments.map((a) => ({
+          id: a.id,
+          filename: a.filename,
+          contentType: a.contentType,
+          sizeBytes: a.sizeBytes,
+          createdAt: a.createdAt.toISOString(),
+        })),
       };
     });
     return {
@@ -711,6 +734,60 @@ export class PrismaStore implements TestCaseStore {
     return this.getExecution(executionId);
   }
 
+  async getStepResultGate(stepResultId: string): Promise<StepResultGate | null> {
+    const r = await prisma.executionStepResult.findUnique({
+      where: { id: stepResultId },
+      select: { executionId: true, testStepId: true, _count: { select: { attachments: true } } },
+    });
+    if (!r) return null;
+    const ts = await prisma.testStep.findUnique({
+      where: { id: r.testStepId },
+      select: { screenshotRequired: true },
+    });
+    return {
+      executionId: r.executionId,
+      screenshotRequired: ts?.screenshotRequired ?? false,
+      hasAttachment: r._count.attachments > 0,
+    };
+  }
+
+  async addAttachment(input: AddAttachmentInput, owner: string): Promise<ExecutionDetail | null> {
+    const sr = await prisma.executionStepResult.findUnique({
+      where: { id: input.stepResultId },
+      select: { executionId: true },
+    });
+    if (!sr) return null;
+    await prisma.attachment.create({
+      data: {
+        stepResultId: input.stepResultId,
+        filename: input.filename.slice(0, 260) || 'attachment',
+        contentType: input.contentType || 'application/octet-stream',
+        sizeBytes: Math.ceil((input.dataBase64.length * 3) / 4),
+        dataBase64: input.dataBase64,
+        uploadedByAccountId: owner,
+      },
+    });
+    return this.getExecution(sr.executionId);
+  }
+
+  async deleteAttachment(attachmentId: string): Promise<ExecutionDetail | null> {
+    const a = await prisma.attachment.findUnique({
+      where: { id: attachmentId },
+      select: { stepResult: { select: { executionId: true } } },
+    });
+    if (!a) return null;
+    await prisma.attachment.delete({ where: { id: attachmentId } });
+    return this.getExecution(a.stepResult.executionId);
+  }
+
+  async getAttachment(id: string): Promise<AttachmentContent | null> {
+    const a = await prisma.attachment.findUnique({
+      where: { id },
+      select: { id: true, filename: true, contentType: true, dataBase64: true },
+    });
+    return a ?? null;
+  }
+
   async completeExecution(executionId: string, owner: string): Promise<ExecutionDetail | null> {
     const results = await prisma.executionStepResult.findMany({ where: { executionId }, select: { status: true } });
     const status = rollup(results.map((r) => r.status as ExecutionStatus));
@@ -741,6 +818,7 @@ export class PrismaStore implements TestCaseStore {
       FAIL: 0,
       BLOCKED: 0,
       SKIPPED: 0,
+      ENHANCEMENT: 0,
     };
     for (const e of executions) byStatus[e.status as ExecutionStatus]++;
 

@@ -716,6 +716,7 @@ button {
 .esp-exec-IN_PROGRESS { background: rgba(79, 148, 188, 0.16); color: var(--esp-blue-strong); }
 .esp-exec-NOT_STARTED { background: rgba(143, 161, 173, 0.16); color: var(--esp-muted); }
 .esp-exec-SKIPPED { background: rgba(143, 161, 173, 0.16); color: var(--esp-muted); }
+.esp-exec-ENHANCEMENT { background: rgba(124, 92, 196, 0.14); color: #6b4fb8; }
 
 /* ---------- progress bar ---------- */
 
@@ -766,6 +767,7 @@ button {
 .esp-vbtn.on-FAIL { background: var(--esp-critical); border-color: var(--esp-critical); color: #fff; }
 .esp-vbtn.on-BLOCKED { background: var(--esp-draft); border-color: var(--esp-draft); color: #fff; }
 .esp-vbtn.on-SKIPPED { background: var(--esp-muted); border-color: var(--esp-muted); color: #fff; }
+.esp-vbtn.on-ENHANCEMENT { background: #6b4fb8; border-color: #6b4fb8; color: #fff; }
 
 /* ---------- dashboard ---------- */
 

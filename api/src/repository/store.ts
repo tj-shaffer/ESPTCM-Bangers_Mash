@@ -6,6 +6,8 @@
  */
 
 import type {
+  AddAttachmentInput,
+  AttachmentContent,
   CreateDefectInput,
   CreateFolderInput,
   CreatePackageInput,
@@ -28,6 +30,13 @@ import type {
   UpdateRunInput,
   UpdateTestCaseInput,
 } from '../domain/types';
+
+/** Screenshot-gate state for a single step result. */
+export interface StepResultGate {
+  executionId: string;
+  screenshotRequired: boolean;
+  hasAttachment: boolean;
+}
 
 export interface DefectRecord {
   id: string;
@@ -62,7 +71,11 @@ export interface TestCaseStore {
   getPackage(id: string): Promise<PackageDetail | null>;
   deletePackage(id: string): Promise<boolean>;
   getExecution(id: string): Promise<ExecutionDetail | null>;
+  getStepResultGate(stepResultId: string): Promise<StepResultGate | null>;
   setStepResult(executionId: string, stepResultId: string, patch: StepResultPatch): Promise<ExecutionDetail | null>;
+  addAttachment(input: AddAttachmentInput, uploadedByAccountId: string): Promise<ExecutionDetail | null>;
+  deleteAttachment(attachmentId: string): Promise<ExecutionDetail | null>;
+  getAttachment(id: string): Promise<AttachmentContent | null>;
   completeExecution(executionId: string, ownerAccountId: string): Promise<ExecutionDetail | null>;
   createDefect(executionId: string, input: CreateDefectInput, ownerAccountId: string): Promise<ExecutionDetail | null>;
   getDefect(id: string): Promise<DefectRecord | null>;

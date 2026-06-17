@@ -1,30 +1,40 @@
 /**
- * AuthContext — bootstraps the Forge user context on mount and exposes a
- * `useAuth()` hook to the rest of the app. Until context is loaded we render
- * an ADS Spinner so feature views can assume `accountId` is non-null.
+ * AuthContext — bootstraps the user context on mount and exposes a `useAuth()`
+ * hook. Beyond identity it carries the resolved role plus `can()` / `hasRole()`
+ * helpers so feature views can gate affordances. Until context is loaded we
+ * render an ADS Spinner so views can assume `accountId` is non-null.
  */
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import Spinner from '@atlaskit/spinner';
 import { invokeResolver } from '../api/client';
+import { canInvoke, type Role } from '../api/permissions';
 
 export interface ForgeUserContext {
   accountId: string | null;
   displayName: string | null;
+  role: Role | null;
   currentIssueKey: string | null;
 }
 
 interface AuthState extends ForgeUserContext {
   loading: boolean;
   error: string | null;
+  /** True if the current role may invoke the given dispatch key. */
+  can: (key: string) => boolean;
+  /** True if the current role is one of the given roles. */
+  hasRole: (...roles: Role[]) => boolean;
 }
 
 const initial: AuthState = {
   accountId: null,
   displayName: null,
+  role: null,
   currentIssueKey: null,
   loading: true,
   error: null,
+  can: () => false,
+  hasRole: () => false,
 };
 
 const AuthCtx = createContext<AuthState>(initial);
@@ -37,14 +47,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     invokeResolver<ForgeUserContext>('getContext')
       .then((ctx) => {
         if (cancelled) return;
-        setState({ ...ctx, loading: false, error: null });
+        const role = ctx.role ?? null;
+        setState({
+          ...ctx,
+          role,
+          loading: false,
+          error: null,
+          can: (key: string) => canInvoke(key, role),
+          hasRole: (...roles: Role[]) => role !== null && roles.includes(role),
+        });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         setState({
           ...initial,
           loading: false,
-          error: err instanceof Error ? err.message : 'Failed to load Forge context',
+          error: err instanceof Error ? err.message : 'Failed to load user context',
         });
       });
     return () => {

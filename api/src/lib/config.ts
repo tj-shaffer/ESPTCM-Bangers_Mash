@@ -24,10 +24,32 @@ export interface AppConfig {
 
   databaseUrl: string;
 
-  /** Shared password for the app's login gate. */
+  /** Shared password for the app's login gate (break-glass). */
   password: string;
   /** HMAC secret used to sign session tokens. */
   authSecret: string;
+
+  /** Public origin of the deployed app, used to build OAuth redirects. */
+  appBaseUrl: string;
+  /**
+   * accountIds that should always resolve to SUPER_ADMIN. Applied on OAuth
+   * login (and to the break-glass session) so the role panel is reachable on a
+   * fresh database. Comma-separated env SUPER_ADMIN_ACCOUNT_IDS.
+   */
+  superAdminAccountIds: string[];
+
+  /**
+   * Atlassian OAuth 2.0 (3LO) — "Log in with Atlassian". Undefined until the
+   * developer-console app is provisioned; while undefined the app falls back to
+   * the shared-password gate. See DECISIONS.md ADR-007.
+   */
+  atlassianOAuth:
+    | {
+        clientId: string;
+        clientSecret: string;
+        redirectUri: string;
+      }
+    | undefined;
 
   /** Optional integrations — undefined until provisioned. */
   anthropic: { apiKey: string; model: string; cheapModel: string | undefined } | undefined;
@@ -73,6 +95,19 @@ export function loadConfig(): AppConfig {
   // dev so the app still boots. Always set TESTFORGE_INTERNAL_SECRET in prod.
   const authSecret = optionalEnv('TESTFORGE_INTERNAL_SECRET') ?? `dev-insecure-${password}`;
 
+  const appBaseUrl = (optionalEnv('APP_BASE_URL') ?? `http://localhost:${process.env.PORT ?? '3001'}`)
+    .replace(/\/+$/, '');
+  const superAdminAccountIds = (optionalEnv('SUPER_ADMIN_ACCOUNT_IDS') ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const oauthClientId = optionalEnv('ATLASSIAN_OAUTH_CLIENT_ID');
+  const oauthClientSecret = optionalEnv('ATLASSIAN_OAUTH_CLIENT_SECRET');
+  // Default the callback to this app's own /api/auth/callback so dev just works.
+  const oauthRedirectUri =
+    optionalEnv('ATLASSIAN_OAUTH_REDIRECT_URI') ?? `${appBaseUrl}/api/auth/callback`;
+
   const anthropicApiKey = optionalEnv('ANTHROPIC_API_KEY');
   const jiraBaseUrl = optionalEnv('JIRA_BASE_URL');
   // JIRA_PROBLEM_ISSUE_TYPE may be a comma-separated list (e.g. "Task,Story") —
@@ -88,6 +123,12 @@ export function loadConfig(): AppConfig {
     databaseUrl: databaseUrl!,
     password: password!,
     authSecret,
+    appBaseUrl,
+    superAdminAccountIds,
+    atlassianOAuth:
+      oauthClientId && oauthClientSecret
+        ? { clientId: oauthClientId, clientSecret: oauthClientSecret, redirectUri: oauthRedirectUri }
+        : undefined,
     anthropic: anthropicApiKey
       ? {
           apiKey: anthropicApiKey,

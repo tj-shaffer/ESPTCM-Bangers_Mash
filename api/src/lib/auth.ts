@@ -1,15 +1,21 @@
 /**
- * Pilot auth: a single shared password unlocks the app. On success the server
- * issues a short-lived JWT the frontend stores and sends as a Bearer token.
- * Not per-user auth — that comes with the production build.
+ * Session tokens for the pilot.
+ *
+ * Identity is acquired one of two ways and both converge here: the primary path
+ * is Atlassian OAuth (the resolved account_id), and a shared-password path
+ * remains as break-glass. Either way we mint our own short-lived session JWT
+ * the frontend stores and sends as a Bearer token; `req.accountId` downstream
+ * is the JWT subject. Swapping in Azure/Entra later is just another caller of
+ * `issueToken` — the rest of the stack is identity-provider-agnostic.
  */
 
 import { timingSafeEqual } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { loadConfig } from './config';
 
-const SUBJECT = 'pilot-user';
 const TTL = '7d';
+// Short-lived signed value guarding the OAuth round-trip against CSRF.
+const STATE_TTL = '10m';
 
 export function passwordMatches(candidate: string): boolean {
   const expected = loadConfig().password;
@@ -19,8 +25,11 @@ export function passwordMatches(candidate: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-export function issueToken(): string {
-  return jwt.sign({ sub: SUBJECT }, loadConfig().authSecret, { expiresIn: TTL });
+/** Mint a session token for a resolved identity. */
+export function issueToken(accountId: string, displayName?: string): string {
+  return jwt.sign({ sub: accountId, name: displayName }, loadConfig().authSecret, {
+    expiresIn: TTL,
+  });
 }
 
 /** Returns the account id (subject) if the token is valid, else null. */
@@ -33,5 +42,20 @@ export function verifyToken(token: string): string | null {
     return null;
   } catch {
     return null;
+  }
+}
+
+/** Sign a short-lived OAuth `state` so the callback can prove it issued it. */
+export function signState(): string {
+  return jwt.sign({ k: 'oauth-state' }, loadConfig().authSecret, { expiresIn: STATE_TTL });
+}
+
+/** Verify a `state` value returned by the OAuth callback. */
+export function verifyState(state: string): boolean {
+  try {
+    const decoded = jwt.verify(state, loadConfig().authSecret);
+    return typeof decoded === 'object' && decoded !== null && decoded.k === 'oauth-state';
+  } catch {
+    return false;
   }
 }

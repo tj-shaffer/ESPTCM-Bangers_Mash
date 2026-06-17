@@ -21,6 +21,8 @@ import cors from 'cors';
 import { loadConfig } from './lib/config';
 import { healthRouter } from './routes/health';
 import { apiRouter } from './routes/invoke';
+import { authRouter } from './routes/auth';
+import { oauthConfigured } from './lib/oauth';
 import { standardLimiter } from './middleware/rateLimiter';
 import { errorHandler } from './middleware/errorHandler';
 
@@ -36,9 +38,17 @@ function buildApp(): Express {
   // cookies), so reflecting the origin is sufficient.
   app.use(cors({ origin: true, credentials: false }));
 
-  app.use(express.json({ limit: '2mb' }));
+  // 12mb accommodates base64-encoded screenshot uploads (~8mb raw) on the
+  // single JSON invoke channel. See ENHANCEMENTS #6.
+  app.use(express.json({ limit: '12mb' }));
 
   app.use('/', healthRouter);
+
+  // OAuth login routes (public) — only mounted when Atlassian OAuth is
+  // configured; otherwise the shared-password gate handles login.
+  if (oauthConfigured()) {
+    app.use('/api/auth', standardLimiter, authRouter);
+  }
 
   // Login is public; /invoke is gated inside the router. A rate limiter guards
   // the whole surface against brute-forcing the password.

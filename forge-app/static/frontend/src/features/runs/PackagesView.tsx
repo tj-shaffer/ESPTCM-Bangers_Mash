@@ -16,8 +16,11 @@ import { TEST_TYPES, TEST_TYPE_LABELS, pkgId } from '../../domain/types';
 import type { TestType } from '../../domain/types';
 import { Modal, Toast } from '../../components/ui';
 import { ExecBadge } from './ExecutionRunner';
+import { useAuth } from '../../context/AuthContext';
 
 export function PackagesView() {
+  const auth = useAuth();
+  const canManage = auth.can('package.create');
   const packages = usePackages();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -46,9 +49,11 @@ export function PackagesView() {
       <aside className="esp-sidebar">
         <div className="esp-sidebar-head">
           <span className="esp-sidebar-title">Packages</span>
-          <button className="esp-btn esp-btn-ghost" onClick={() => setShowNew(true)}>
-            + New package
-          </button>
+          {canManage ? (
+            <button className="esp-btn esp-btn-ghost" onClick={() => setShowNew(true)}>
+              + New package
+            </button>
+          ) : null}
         </div>
         <div className="esp-tree">
           {(packages.data ?? []).length === 0 ? (
@@ -84,21 +89,23 @@ export function PackagesView() {
                 <span className="esp-badge esp-badge-soft">{TEST_TYPE_LABELS[pkg.packageType]}</span>
                 <ExecBadge status={pkg.status} />
                 <div className="esp-header-spacer" />
-                <button
-                  className="esp-btn esp-btn-danger"
-                  onClick={() => {
-                    if (window.confirm(`Delete package "${pkg.name}"? Its runs are kept, just un-bundled.`)) {
-                      deletePackage.mutate(pkg.id, {
-                        onSuccess: () => {
-                          setSelectedId(null);
-                          flash('Package deleted');
-                        },
-                      });
-                    }
-                  }}
-                >
-                  Delete package
-                </button>
+                {canManage ? (
+                  <button
+                    className="esp-btn esp-btn-danger"
+                    onClick={() => {
+                      if (window.confirm(`Delete package "${pkg.name}"? Its runs are kept, just un-bundled.`)) {
+                        deletePackage.mutate(pkg.id, {
+                          onSuccess: () => {
+                            setSelectedId(null);
+                            flash('Package deleted');
+                          },
+                        });
+                      }
+                    }}
+                  >
+                    Delete package
+                  </button>
+                ) : null}
               </div>
 
               <div className="esp-list">

@@ -22,6 +22,7 @@ import type {
 interface ForgeUserContext {
   accountId: string | null;
   displayName: string | null;
+  role: string | null;
   currentIssueKey: string | null;
 }
 
@@ -52,7 +53,9 @@ resolver.define('getContext', async ({ context }): Promise<ForgeUserContext> => 
     }
   }
 
-  return { accountId, displayName, currentIssueKey: issueKey };
+  // Forge mode is a demo surface (the pilot ships on web/Vercel); grant the
+  // embedded Jira user authoring access so affordances render.
+  return { accountId, displayName, role: 'TEST_MANAGER', currentIssueKey: issueKey };
 });
 
 function requireAccountId(context: { accountId?: string }): string {

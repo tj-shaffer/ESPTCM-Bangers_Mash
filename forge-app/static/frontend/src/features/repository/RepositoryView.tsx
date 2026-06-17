@@ -18,6 +18,7 @@ import { TestCaseList } from './TestCaseList';
 import { TestCaseEditor } from './TestCaseEditor';
 import { ImportWizard } from '../import/ImportWizard';
 import { Modal, Toast } from '../../components/ui';
+import { useAuth } from '../../context/AuthContext';
 
 function findFirstFolder(nodes: FolderNode[]): FolderNode | null {
   for (const n of nodes) {
@@ -39,6 +40,9 @@ export function RepositoryView() {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [folderQuery, setFolderQuery] = useState('');
   const [toast, setToast] = useState<string | null>(null);
+
+  const auth = useAuth();
+  const canAuthor = auth.can('repo.createCase');
 
   const cases = useCases(folder?.id);
   const selectedCase = useCase(creatingCase ? null : selectedCaseId);
@@ -109,9 +113,11 @@ export function RepositoryView() {
       <aside className="esp-sidebar">
         <div className="esp-sidebar-head">
           <span className="esp-sidebar-title">Repository</span>
-          <button className="esp-btn esp-btn-ghost" onClick={() => setShowNewFolder(true)} title="New folder">
-            + Folder
-          </button>
+          {canAuthor ? (
+            <button className="esp-btn esp-btn-ghost" onClick={() => setShowNewFolder(true)} title="New folder">
+              + Folder
+            </button>
+          ) : null}
         </div>
         <input
           className="esp-input"
@@ -137,23 +143,27 @@ export function RepositoryView() {
           <div className="esp-toolbar">
             <h2>{folder?.name ?? 'Select a folder'}</h2>
             <div className="esp-header-spacer" />
-            <button
-              className="esp-btn esp-btn-secondary"
-              disabled={!folder}
-              onClick={() => setShowImport(true)}
-            >
-              ⬆ Import CSV/Excel
-            </button>
-            <button
-              className="esp-btn esp-btn-primary"
-              disabled={!folder}
-              onClick={() => {
-                setCreatingCase(true);
-                setSelectedCaseId(null);
-              }}
-            >
-              + New test case
-            </button>
+            {canAuthor ? (
+              <>
+                <button
+                  className="esp-btn esp-btn-secondary"
+                  disabled={!folder}
+                  onClick={() => setShowImport(true)}
+                >
+                  ⬆ Import CSV/Excel
+                </button>
+                <button
+                  className="esp-btn esp-btn-primary"
+                  disabled={!folder}
+                  onClick={() => {
+                    setCreatingCase(true);
+                    setSelectedCaseId(null);
+                  }}
+                >
+                  + New test case
+                </button>
+              </>
+            ) : null}
           </div>
 
           {cases.isLoading ? (
@@ -188,8 +198,9 @@ export function RepositoryView() {
             folderName={folder?.name ?? ''}
             saving={saving}
             onSave={handleSave}
-            onDuplicate={handleDuplicate}
-            onDelete={handleDelete}
+            onDuplicate={canAuthor ? handleDuplicate : undefined}
+            onDelete={canAuthor ? handleDelete : undefined}
+            readOnly={!canAuthor}
           />
         ) : selectedCaseId && selectedCase.isLoading ? (
           <div className="esp-detail">

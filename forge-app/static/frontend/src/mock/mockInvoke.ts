@@ -355,7 +355,13 @@ export async function mockInvoke<T>(key: string, payload: Record<string, unknown
   const store = getMockStore();
   switch (key) {
     case 'getContext':
-      return { accountId: 'local-dev', displayName: 'Local Dev (mock)', currentIssueKey: null } as T;
+      // Mock/standalone preview runs as a super admin so every affordance shows.
+      return {
+        accountId: 'local-dev',
+        displayName: 'Local Dev (mock)',
+        role: 'SUPER_ADMIN',
+        currentIssueKey: null,
+      } as T;
     case 'repo.getFolderTree':
       return store.getFolderTree(payload.projectKey as string | undefined) as T;
     case 'repo.createFolder':

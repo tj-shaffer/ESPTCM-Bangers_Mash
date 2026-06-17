@@ -1,21 +1,46 @@
 /** The execution runner — step through a test case, mark Pass/Fail/Blocked/Skip
  *  per step, record actual results, and complete the execution. */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Spinner from '@atlaskit/spinner';
 import { Modal } from '../../components/ui';
 import {
+  fetchAttachment,
+  useAddAttachment,
   useCompleteExecution,
   useCreateDefect,
+  useDeleteAttachment,
   useExecution,
   useJiraOptions,
   useLinkDefectToJira,
   useSetStepResult,
 } from '../../api/runs';
 import { EXEC_STATUS_LABEL, PRIORITIES, tcId } from '../../domain/types';
-import type { ExecutionDetail, ExecutionStatus, Priority } from '../../domain/types';
+import type { AttachmentView, ExecutionDetail, ExecutionStatus, Priority } from '../../domain/types';
 
-const STEP_STATUSES: ExecutionStatus[] = ['PASS', 'FAIL', 'BLOCKED', 'SKIPPED'];
+const STEP_STATUSES: ExecutionStatus[] = ['PASS', 'FAIL', 'BLOCKED', 'SKIPPED', 'ENHANCEMENT'];
+const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
+
+/** Read a File into raw base64 (strips the data: URL prefix). */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result);
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function base64ToBlob(b64: string, type: string): Blob {
+  const bytes = atob(b64);
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+  return new Blob([arr], { type: type || 'application/octet-stream' });
+}
 
 export function ExecBadge({ status }: { status: ExecutionStatus }) {
   return <span className={`esp-exec esp-exec-${status}`}>{EXEC_STATUS_LABEL[status]}</span>;
@@ -80,45 +105,66 @@ export function ExecutionRunner({
             ) : null}
           </div>
 
-          {data.steps.map((s) => (
-            <div className="esp-rstep" key={s.id}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span className="esp-step-num">{s.order}</span>
-                <ExecBadge status={s.status} />
-              </div>
-              <div style={{ fontSize: 14, marginBottom: 4 }}>{s.action}</div>
-              {s.testData ? (
-                <div className="esp-muted" style={{ fontSize: 12, marginBottom: 4 }}>
-                  Data: {s.testData}
+          {data.steps.map((s) => {
+            const gated = s.screenshotRequired && s.attachments.length === 0;
+            return (
+              <div className="esp-rstep" key={s.id}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span className="esp-step-num">{s.order}</span>
+                  <ExecBadge status={s.status} />
+                  {s.screenshotRequired ? (
+                    <span className="esp-badge esp-badge-soft" title="A screenshot is required to mark this step">
+                      📎 Screenshot required
+                    </span>
+                  ) : null}
                 </div>
-              ) : null}
-              <div style={{ fontSize: 13, marginBottom: 4 }}>
-                <strong>Expected: </strong>
-                {s.expectedResult}
-              </div>
+                <div style={{ fontSize: 14, marginBottom: 4 }}>{s.action}</div>
+                {s.testData ? (
+                  <div className="esp-muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                    Data: {s.testData}
+                  </div>
+                ) : null}
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  <strong>Expected: </strong>
+                  {s.expectedResult}
+                </div>
 
-              <div className="esp-rstep-actions">
-                {STEP_STATUSES.map((st) => (
-                  <button
-                    key={st}
-                    className={`esp-vbtn${s.status === st ? ` on-${st}` : ''}`}
-                    onClick={() =>
-                      setStep.mutate({ executionId, stepResultId: s.id, patch: { status: st } })
-                    }
-                  >
-                    {EXEC_STATUS_LABEL[st]}
-                  </button>
-                ))}
-              </div>
+                <StepAttachments
+                  stepResultId={s.id}
+                  attachments={s.attachments}
+                  runId={runId}
+                />
 
-              <ActualResult
-                initial={s.actualResult ?? ''}
-                onSave={(actualResult) =>
-                  setStep.mutate({ executionId, stepResultId: s.id, patch: { actualResult } })
-                }
-              />
-            </div>
-          ))}
+                <div className="esp-rstep-actions">
+                  {STEP_STATUSES.map((st) => (
+                    <button
+                      key={st}
+                      className={`esp-vbtn${s.status === st ? ` on-${st}` : ''}`}
+                      disabled={gated}
+                      title={gated ? 'Attach a screenshot first' : undefined}
+                      onClick={() =>
+                        setStep.mutate({ executionId, stepResultId: s.id, patch: { status: st } })
+                      }
+                    >
+                      {EXEC_STATUS_LABEL[st]}
+                    </button>
+                  ))}
+                </div>
+                {gated ? (
+                  <p className="esp-muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+                    📎 Attach a screenshot above to mark this step.
+                  </p>
+                ) : null}
+
+                <ActualResult
+                  initial={s.actualResult ?? ''}
+                  onSave={(actualResult) =>
+                    setStep.mutate({ executionId, stepResultId: s.id, patch: { actualResult } })
+                  }
+                />
+              </div>
+            );
+          })}
 
           <DefectsPanel exec={data} runId={runId} />
         </>
@@ -252,6 +298,90 @@ function DefectsPanel({ exec, runId }: { exec: ExecutionDetail; runId: string })
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function StepAttachments({
+  stepResultId,
+  attachments,
+  runId,
+}: {
+  stepResultId: string;
+  attachments: AttachmentView[];
+  runId: string;
+}) {
+  const addAtt = useAddAttachment(runId);
+  const delAtt = useDeleteAttachment(runId);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const onPick = async (file: File) => {
+    setError(null);
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setError('File too large (max 8 MB).');
+      return;
+    }
+    try {
+      const dataBase64 = await fileToBase64(file);
+      await addAtt.mutateAsync({
+        stepResultId,
+        filename: file.name,
+        contentType: file.type || 'application/octet-stream',
+        dataBase64,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Upload failed');
+    }
+  };
+
+  const view = async (id: string) => {
+    const a = await fetchAttachment(id);
+    if (!a) return;
+    const url = URL.createObjectURL(base64ToBlob(a.dataBase64, a.contentType));
+    window.open(url, '_blank', 'noopener,noreferrer');
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+
+  return (
+    <div style={{ margin: '8px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <button className="esp-btn esp-btn-secondary" onClick={() => fileRef.current?.click()} disabled={addAtt.isPending}>
+          {addAtt.isPending ? 'Uploading…' : '📎 Attach screenshot'}
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*,.pdf"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void onPick(f);
+            e.target.value = '';
+          }}
+        />
+        {attachments.map((a) => (
+          <span key={a.id} className="esp-badge esp-badge-soft" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+            <button
+              className="esp-link-btn"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'inherit', textDecoration: 'underline' }}
+              onClick={() => void view(a.id)}
+              title="Open attachment"
+            >
+              {a.contentType.startsWith('image/') ? '🖼' : '📄'} {a.filename}
+            </button>
+            <button
+              className="esp-link-btn"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'inherit' }}
+              onClick={() => delAtt.mutate(a.id)}
+              title="Remove attachment"
+            >
+              ✕
+            </button>
+          </span>
+        ))}
+      </div>
+      {error ? <p className="esp-error" style={{ fontSize: 12, margin: '4px 0 0' }}>{error}</p> : null}
     </div>
   );
 }

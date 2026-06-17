@@ -76,6 +76,9 @@ enum ExecutionStatus {
   FAIL
   BLOCKED
   SKIPPED
+  // "Nice to have" — a non-blocking enhancement request raised during a run,
+  // distinct from BLOCKED. See ENHANCEMENTS #8.
+  ENHANCEMENT
 }
 
 enum TestPlanType {
@@ -193,6 +196,9 @@ model TestStep {
   action            String
   testData          String?
   expectedResult    String
+  // When true, an execution of this step can't be marked until a screenshot
+  // is attached — set by the case builder. See ENHANCEMENTS #6.
+  screenshotRequired Boolean    @default(false)
   sharedStepId      String? // Optional reference into the shared-step library
   sharedStep        SharedStep? @relation(fields: [sharedStepId], references: [id])
   clarityScore      Int? // AI clarity score 1..10
@@ -376,12 +382,32 @@ model ExecutionStepResult {
   status         ExecutionStatus
   actualResult   String?
   notes          String?
-  attachmentUrls String[]        @default([])
+  attachmentUrls String[]        @default([]) // legacy/reserved (external URLs)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
+  attachments Attachment[]
+
   @@index([executionId])
   @@map("execution_step_results")
+}
+
+// Evidence (screenshots/files) attached to a step result during execution.
+// Pilot: content is stored base64 in Postgres (no blob store yet); swap to an
+// external blob store behind the store interface later. See ENHANCEMENTS #6.
+model Attachment {
+  id                  String              @id @default(uuid())
+  stepResultId        String
+  stepResult          ExecutionStepResult @relation(fields: [stepResultId], references: [id], onDelete: Cascade)
+  filename            String
+  contentType         String
+  sizeBytes           Int
+  dataBase64          String
+  uploadedByAccountId String
+  createdAt           DateTime            @default(now())
+
+  @@index([stepResultId])
+  @@map("attachments")
 }
 
 model Defect {

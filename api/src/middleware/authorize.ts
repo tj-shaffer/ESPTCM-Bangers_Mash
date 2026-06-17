@@ -1,15 +1,18 @@
 /**
- * Role-based authorization. Looks up the UserRole record by the accountId
- * populated by `requireInternalAuth`; unknown accounts default to OBSERVER
- * (read-only) so the API never silently elevates an unmapped user.
+ * Role-based authorization middleware. Resolves the role for the accountId
+ * populated by `requireAuth` (unknown accounts default to OBSERVER) and 403s if
+ * it isn't in the allowed set.
  *
- * Usage:
- *   router.post('/test-cases', requireInternalAuth, authorize('TEST_AUTHOR', 'TEST_MANAGER', 'SUPER_ADMIN'), handler);
+ * The single-route /api/invoke surface enforces roles via the permission map
+ * instead (see repository/permissions.ts); this middleware remains for any
+ * conventional per-route handlers.
+ *
+ *   router.post('/test-cases', requireAuth, authorize('TEST_AUTHOR', 'TEST_MANAGER', 'SUPER_ADMIN'), handler);
  */
 
 import type { Request, Response, NextFunction } from 'express';
 import { Role } from '@prisma/client';
-import { prisma } from '../db/prisma';
+import { resolveRole } from '../lib/identity';
 
 export function authorize(...allowed: Role[]) {
   return async function authorizeMiddleware(
@@ -18,17 +21,13 @@ export function authorize(...allowed: Role[]) {
     next: NextFunction,
   ): Promise<void> {
     if (!req.accountId) {
-      // requireInternalAuth must run first.
+      // requireAuth must run first.
       res.status(401).json({ error: 'Unauthorized: no account context' });
       return;
     }
 
     try {
-      const userRole = await prisma.userRole.findUnique({
-        where: { atlassianAccountId: req.accountId },
-        select: { role: true },
-      });
-      const role: Role = userRole?.role ?? Role.OBSERVER;
+      const role = await resolveRole(req.accountId);
       req.userRole = role;
 
       if (!allowed.includes(role)) {

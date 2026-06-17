@@ -26,41 +26,10 @@ function isStandalone(): boolean {
 
 export const STANDALONE = isStandalone() && !WEB;
 export const WEB_MODE = WEB;
-// OAuth ("Log in with Atlassian") is the default in web mode; set
-// VITE_OAUTH_ENABLED=false to hide the button and use only the password gate.
-export const OAUTH_ENABLED = WEB && import.meta.env.VITE_OAUTH_ENABLED !== 'false';
 
 // ---------- token + auth (web mode) ----------
 
 const TOKEN_KEY = 'tf_token';
-
-/**
- * After an Atlassian OAuth round-trip the API redirects back with the session
- * token in the URL fragment (`#token=…`). Capture it once on load, persist it,
- * and scrub the fragment so it isn't left in history. Returns true if a token
- * was captured this load.
- */
-export function captureTokenFromHash(): boolean {
-  try {
-    const hash = window.location.hash.replace(/^#/, '');
-    if (!hash) return false;
-    const params = new URLSearchParams(hash);
-    const token = params.get('token');
-    if (token) {
-      setToken(token);
-      history.replaceState(null, '', window.location.pathname + window.location.search);
-      return true;
-    }
-  } catch {
-    /* ignore */
-  }
-  return false;
-}
-
-/** Send the browser to the Atlassian consent screen. */
-export function loginWithAtlassian(): void {
-  window.location.href = `${API_BASE}/api/auth/login`;
-}
 
 export function getToken(): string | null {
   try {
@@ -99,18 +68,23 @@ export class UnauthorizedError extends Error {
   }
 }
 
-/** POST the shared password; on success stores the token and returns true. */
-export async function login(password: string): Promise<boolean> {
+export interface LoginResult {
+  ok: boolean;
+  mustChangePassword?: boolean;
+}
+
+/** POST email + password; on success stores the token. */
+export async function login(email: string, password: string): Promise<LoginResult> {
   const res = await fetch(`${API_BASE}/api/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ email, password }),
   });
-  if (!res.ok) return false;
-  const data = (await res.json()) as { token?: string };
-  if (!data.token) return false;
+  if (!res.ok) return { ok: false };
+  const data = (await res.json()) as { token?: string; mustChangePassword?: boolean };
+  if (!data.token) return { ok: false };
   setToken(data.token);
-  return true;
+  return { ok: true, mustChangePassword: !!data.mustChangePassword };
 }
 
 async function httpInvoke<T>(key: string, payload: Record<string, unknown>): Promise<T> {

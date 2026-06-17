@@ -66,9 +66,14 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'package.create': AUTHOR,
   'package.delete': AUTHOR,
 
+  // ---------- account (any authenticated user, incl. OBSERVER) ----------
+  'account.changePassword': ALL,
+
   // ---------- administration (super admin only) ----------
   'admin.listUsers': ADMIN,
   'admin.setRole': ADMIN,
+  'admin.createUser': ADMIN,
+  'admin.resetPassword': ADMIN,
 };
 
 /** True if `role` may invoke `key`. Unknown keys fail closed. */

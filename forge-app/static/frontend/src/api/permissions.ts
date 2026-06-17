@@ -49,8 +49,12 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'package.create': AUTHOR,
   'package.delete': AUTHOR,
 
+  'account.changePassword': ALL,
+
   'admin.listUsers': ADMIN,
   'admin.setRole': ADMIN,
+  'admin.createUser': ADMIN,
+  'admin.resetPassword': ADMIN,
 };
 
 export function canInvoke(key: string, role: Role | null): boolean {

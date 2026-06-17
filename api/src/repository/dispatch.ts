@@ -8,6 +8,7 @@
 import { Role } from '@prisma/client';
 import type { TestCaseStore } from './store';
 import { prisma } from '../db/prisma';
+import { changeOwnPassword, createUser, setUserPassword } from '../lib/identity';
 import { jiraBrowseUrl, jiraCheck, jiraConfigured, jiraCreateProblem, jiraOptions } from '../services/jira';
 import type {
   AddAttachmentInput,
@@ -56,12 +57,13 @@ export async function dispatch(
     case 'getContext': {
       const user = await prisma.userRole.findUnique({
         where: { atlassianAccountId: accountId },
-        select: { displayName: true },
+        select: { displayName: true, mustChangePassword: true },
       });
       return {
         accountId,
         displayName: user?.displayName ?? accountId,
         role,
+        mustChangePassword: user?.mustChangePassword ?? false,
         currentIssueKey: null,
       };
     }
@@ -339,6 +341,50 @@ export async function dispatch(
         data: { role: nextRole as Role },
         select: { atlassianAccountId: true, displayName: true, email: true, role: true },
       });
+    }
+
+    case 'admin.createUser': {
+      const email = payload.email as string | undefined;
+      const displayName = payload.displayName as string | undefined;
+      const newRole = payload.role as string | undefined;
+      const password = payload.password as string | undefined;
+      if (!email || !email.trim()) throw new DispatchError('Email is required');
+      if (!displayName || !displayName.trim()) throw new DispatchError('Name is required');
+      if (!newRole || !(newRole in Role)) throw new DispatchError('A valid role is required');
+      if (!password || password.length < 8) {
+        throw new DispatchError('Temporary password must be at least 8 characters');
+      }
+      try {
+        return await createUser({ email, displayName, role: newRole as Role, password });
+      } catch (err) {
+        throw new DispatchError(err instanceof Error ? err.message : 'Could not create user');
+      }
+    }
+
+    case 'admin.resetPassword': {
+      const targetAccountId = payload.accountId as string | undefined;
+      const password = payload.password as string | undefined;
+      if (!targetAccountId) throw new DispatchError('accountId is required');
+      if (!password || password.length < 8) {
+        throw new DispatchError('Temporary password must be at least 8 characters');
+      }
+      const updated = await setUserPassword(targetAccountId, password);
+      if (!updated) throw new DispatchError('User not found', 404);
+      return updated;
+    }
+
+    case 'account.changePassword': {
+      const currentPassword = payload.currentPassword as string | undefined;
+      const newPassword = payload.newPassword as string | undefined;
+      if (!currentPassword || !newPassword) {
+        throw new DispatchError('Current and new passwords are required');
+      }
+      if (newPassword.length < 8) {
+        throw new DispatchError('New password must be at least 8 characters');
+      }
+      const result = await changeOwnPassword(accountId, currentPassword, newPassword);
+      if (!result.ok) throw new DispatchError(result.reason ?? 'Could not change password');
+      return { ok: true };
     }
 
     default:

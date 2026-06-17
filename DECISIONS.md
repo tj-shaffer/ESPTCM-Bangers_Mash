@@ -99,3 +99,17 @@ Short ADRs for the load-bearing technical choices. Each records the decision and
 **Why.** It delivers real, differentiated roles without waiting on Azure, covers everyone (all users have Atlassian accounts, including field operators), and avoids the app owning passwords. Identity acquisition sits behind a seam (`upsertUserRole` + `resolveRole` in `api/src/lib/identity.ts`): OAuth today and Entra OIDC later both converge on "upsert the user, resolve the role, issue a session JWT," so swapping the provider is a new callback route — not a rewrite of the role model, permission map, or UI.
 
 **Consequences.** Requires registering an OAuth 2.0 (3LO) app in the Atlassian developer console for the customer tenant, scope `read:me`, callback `<APP_BASE_URL>/api/auth/callback`, with admin consent — tracked as an external dependency. While OAuth env is unset the app falls back to the password gate, so local dev and the existing STANDALONE/FORGE modes are unaffected. The authorization layer is identity-provider-agnostic and survives the eventual Entra/Azure AD migration.
+
+---
+
+## ADR-008 — App-managed email/password auth (supersedes ADR-007's Atlassian OAuth)
+
+**Status:** Accepted (2026-06-17), pilot scope. **Supersedes the authN half of ADR-007** (the authZ half stands).
+
+**Context.** ADR-007's "Log in with Atlassian" never worked in deployment — `GET /api/auth/login` 404s because the OAuth routes only mount when `ATLASSIAN_OAUTH_CLIENT_ID/SECRET` are set, and registering a 3LO app + obtaining admin consent on the customer's Atlassian tenant is a blocker we do not expect to clear. Roles are needed now.
+
+**Decision.** Keep the entire **authorization** layer (UserRole, `resolveRole`, the `/api/invoke` PERMISSIONS map, the admin panel, UI gating) and swap only **authentication** to app-managed **email + password**. Credentials live on `UserRole` (`email` unique, `passwordHash`, `mustChangePassword`), hashed with Node's built-in `scrypt` (no new dependency, `api/src/lib/password.ts`). `POST /api/login` takes `{ email, password }` and mints the same session JWT. Accounts are **admin-provisioned** — a Super Admin creates each user (email, name, role, temp password) from the Users & Roles panel; there is no public sign-up. Users **change their own password** (forced on first login after a temp password); admins can **reset** to a new temp password. The first Super Admin is seeded idempotently on boot from `BOOTSTRAP_ADMIN_EMAIL`/`BOOTSTRAP_ADMIN_PASSWORD`. No email-based reset (no mail service).
+
+**Why.** Unblocks differentiated roles with zero external dependency and full control over who gets in. The identity seam (`api/src/lib/identity.ts`) was built for exactly this swap — login method changed, role model/permission map/UI untouched.
+
+**Consequences.** We now own credential security: scrypt hashing, constant-time verify, JWT over TLS, and the existing `/api` rate limiter against brute-force. The Atlassian OAuth code (`api/src/lib/oauth.ts`, `api/src/routes/auth.ts`) and its env (`ATLASSIAN_OAUTH_*`, `APP_BASE_URL`, `SUPER_ADMIN_ACCOUNT_IDS`, `TESTFORGE_PASSWORD`) are removed. The Jira **defect** integration (service-account token, `api/src/services/jira.ts`) is unrelated and unaffected. Azure/Entra SSO remains the eventual target and is still a drop-in via the same seam (a new caller of `issueToken`).

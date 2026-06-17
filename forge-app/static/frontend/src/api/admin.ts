@@ -32,3 +32,30 @@ export function useSetRole() {
     onSuccess: () => qc.invalidateQueries({ queryKey: usersKey }),
   });
 }
+
+export function useCreateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { email: string; displayName: string; role: Role; password: string }) =>
+      invokeResolver<ManagedUser>('admin.createUser', { ...input }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: usersKey }),
+  });
+}
+
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: ({ accountId, password }: { accountId: string; password: string }) =>
+      invokeResolver<{ atlassianAccountId: string; email: string }>('admin.resetPassword', {
+        accountId,
+        password,
+      }),
+  });
+}
+
+/** Self-service password change for the logged-in user. */
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: ({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }) =>
+      invokeResolver<{ ok: boolean }>('account.changePassword', { currentPassword, newPassword }),
+  });
+}

@@ -14,6 +14,7 @@ export interface ForgeUserContext {
   accountId: string | null;
   displayName: string | null;
   role: Role | null;
+  mustChangePassword?: boolean;
   currentIssueKey: string | null;
 }
 

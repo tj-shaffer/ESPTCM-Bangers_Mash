@@ -43,14 +43,8 @@ function buildApp(): Express {
 
   app.use('/', healthRouter);
 
-  // OAuth login routes (public) — only mounted when Atlassian OAuth is
-  // configured; otherwise the shared-password gate handles login.
-  if (oauthConfigured()) {
-    app.use('/api/auth', standardLimiter, authRouter);
-  }
-
   // Login is public; /invoke is gated inside the router. A rate limiter guards
-  // the whole surface against brute-forcing the password.
+  // the whole surface against brute-forcing credentials.
   app.use('/api', standardLimiter, apiRouter);
 
   app.use(errorHandler);
@@ -60,6 +54,13 @@ function buildApp(): Express {
 
 const app = buildApp();
 export default app;
+
+// Idempotently seed the bootstrap SUPER_ADMIN. Fire-and-forget so a transient
+// DB hiccup on a cold start doesn't take down the function; logged on failure.
+void ensureBootstrapAdmin().catch((err: unknown) => {
+  // eslint-disable-next-line no-console
+  console.error('[boot] ensureBootstrapAdmin failed', err);
+});
 
 if (require.main === module) {
   const { port, nodeEnv } = loadConfig();

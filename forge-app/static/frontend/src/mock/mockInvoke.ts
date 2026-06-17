@@ -146,6 +146,9 @@ interface MockPackage {
   displayId: number;
   name: string;
   packageType: TestType;
+  approverName?: string | null;
+  approvalNote?: string | null;
+  approvedAt?: string | null;
   createdAt: string;
 }
 interface MockUser {
@@ -640,6 +643,8 @@ class MockStore {
       failed: sum('failed'),
       blocked: sum('blocked'),
       notStarted: sum('notStarted'),
+      approverName: p.approverName ?? null,
+      approvedAt: p.approvedAt ?? null,
       createdAt: p.createdAt,
     };
   }
@@ -658,6 +663,9 @@ class MockStore {
       name: p.name,
       packageType: p.packageType,
       status: rollup(runs.map((r) => r.status)),
+      approverName: p.approverName ?? null,
+      approvalNote: p.approvalNote ?? null,
+      approvedAt: p.approvedAt ?? null,
       createdAt: p.createdAt,
       runs,
     };
@@ -684,6 +692,31 @@ class MockStore {
     this.packages = this.packages.filter((p) => p.id !== id);
     for (const r of this.runs) if (r.packageId === id) r.packageId = null;
     return this.packages.length < before;
+  }
+
+  signOffPackage(id: string, input: SignOffInput): PackageDetail | null {
+    const p = this.packages.find((x) => x.id === id);
+    if (!p) return null;
+    const approved = input.decision === 'APPROVED';
+    p.approverName = approved ? input.approverName : null;
+    p.approvalNote = input.note ?? null;
+    p.approvedAt = approved ? nowIso() : null;
+    // Cascade only to member runs awaiting approval, mirroring signOffRun.
+    for (const r of this.runs) {
+      if (r.packageId !== id || r.stage !== 'READY_FOR_APPROVAL') continue;
+      if (approved) {
+        r.stage = 'APPROVED';
+        r.approverName = input.approverName;
+        r.approvalNote = input.note ?? null;
+        r.approvedAt = nowIso();
+      } else {
+        r.stage = 'IN_PROGRESS';
+        r.approverName = null;
+        r.approvalNote = input.note ?? null;
+        r.approvedAt = null;
+      }
+    }
+    return this.getPackage(id);
   }
 
   // ---------- dashboard / report ----------
@@ -1098,6 +1131,8 @@ export async function mockInvoke<T>(key: string, payload: Record<string, unknown
       return store.createPackage(p as unknown as CreatePackageInput) as T;
     case 'package.delete':
       return { deleted: store.deletePackage(p.id) } as T;
+    case 'package.signOff':
+      return store.signOffPackage(p.id, { decision: p.decision, approverName: p.approverName, note: p.note }) as T;
 
     // execution
     case 'exec.get':

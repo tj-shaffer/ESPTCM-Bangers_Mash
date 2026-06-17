@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Spinner from '@atlaskit/spinner';
 import type { Environment, FolderNode, TestCaseStatus, TestCaseSummary } from '../../domain/types';
-import { ENVIRONMENTS } from '../../domain/types';
+import { ENVIRONMENTS, TEAM_MEMBERS } from '../../domain/types';
 import {
   useCase,
   useCases,
@@ -15,7 +15,7 @@ import {
   useFolderTree,
   useUpdateCase,
 } from '../../api/repository';
-import { useCreateRun } from '../../api/runs';
+import { useCreateRun, usePackages } from '../../api/runs';
 import { FolderTree } from './FolderTree';
 import { TestCaseList } from './TestCaseList';
 import { TestCaseEditor } from './TestCaseEditor';
@@ -452,8 +452,11 @@ function StartRunModal({
   onStarted: (runId: string) => void;
 }) {
   const createRun = useCreateRun();
+  const packages = usePackages();
   const [name, setName] = useState(defaultName);
   const [environment, setEnvironment] = useState<Environment>('TEST');
+  const [assignee, setAssignee] = useState('');
+  const [packageId, setPackageId] = useState('');
   const [includeDrafts, setIncludeDrafts] = useState(false);
 
   const activeCount = candidates.filter((c) => c.status === 'ACTIVE').length;
@@ -465,7 +468,13 @@ function StartRunModal({
 
   const start = () =>
     createRun.mutate(
-      { name: name.trim(), environment, testCaseIds: runnable.map((c) => c.id) },
+      {
+        name: name.trim(),
+        environment,
+        testCaseIds: runnable.map((c) => c.id),
+        assigneeName: assignee.trim() || undefined,
+        packageId: packageId || undefined,
+      },
       { onSuccess: (r) => onStarted(r.id) },
     );
 
@@ -497,12 +506,40 @@ function StartRunModal({
           }}
         />
       </div>
+      <div className="esp-grid-2">
+        <div className="esp-field">
+          <label className="esp-label">Environment</label>
+          <select className="esp-select" value={environment} onChange={(e) => setEnvironment(e.target.value as Environment)}>
+            {ENVIRONMENTS.map((env) => (
+              <option key={env} value={env}>
+                {env}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="esp-field">
+          <label className="esp-label">Assign to (optional)</label>
+          <input
+            className="esp-input"
+            list="esp-team-members"
+            placeholder="e.g. David Brodecki"
+            value={assignee}
+            onChange={(e) => setAssignee(e.target.value)}
+          />
+          <datalist id="esp-team-members">
+            {TEAM_MEMBERS.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+        </div>
+      </div>
       <div className="esp-field">
-        <label className="esp-label">Environment</label>
-        <select className="esp-select" value={environment} onChange={(e) => setEnvironment(e.target.value as Environment)}>
-          {ENVIRONMENTS.map((env) => (
-            <option key={env} value={env}>
-              {env}
+        <label className="esp-label">Add to package (optional)</label>
+        <select className="esp-select" value={packageId} onChange={(e) => setPackageId(e.target.value)}>
+          <option value="">No package</option>
+          {(packages.data ?? []).map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
             </option>
           ))}
         </select>

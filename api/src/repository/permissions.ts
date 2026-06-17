@@ -55,6 +55,7 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'defect.toJira': MANAGE,
   'defect.linkJira': MANAGE,
   'run.signOff': MANAGE,
+  'package.signOff': MANAGE,
 
   // ---------- authoring (authors, managers, super admins) ----------
   'repo.createFolder': AUTHOR,

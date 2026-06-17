@@ -203,6 +203,8 @@ export interface PackageSummary {
   failed: number;
   blocked: number;
   notStarted: number;
+  approverName?: string | null;
+  approvedAt?: string | null;
   createdAt: string;
 }
 
@@ -212,6 +214,9 @@ export interface PackageDetail {
   name: string;
   packageType: TestType;
   status: ExecutionStatus;
+  approverName?: string | null;
+  approvalNote?: string | null;
+  approvedAt?: string | null;
   createdAt: string;
   runs: TestRunSummary[];
 }

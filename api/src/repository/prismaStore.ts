@@ -588,6 +588,8 @@ export class PrismaStore implements TestCaseStore {
         failed: count('FAIL'),
         blocked: count('BLOCKED'),
         notStarted: count('NOT_STARTED'),
+        approverName: p.approverName,
+        approvedAt: p.approvedAt?.toISOString() ?? null,
         createdAt: p.createdAt.toISOString(),
       };
     });
@@ -634,6 +636,9 @@ export class PrismaStore implements TestCaseStore {
       name: pkg.name,
       packageType: pkg.packageType as TestType,
       status: rollup(statuses),
+      approverName: pkg.approverName,
+      approvalNote: pkg.approvalNote,
+      approvedAt: pkg.approvedAt?.toISOString() ?? null,
       createdAt: pkg.createdAt.toISOString(),
       runs,
     };
@@ -647,6 +652,31 @@ export class PrismaStore implements TestCaseStore {
     } catch {
       return false;
     }
+  }
+
+  /** Package-level sign-off (ENHANCEMENTS #11). Records the decision on the
+   *  package and cascades it to member runs sitting at READY_FOR_APPROVAL —
+   *  approve advances them to APPROVED, reject sends them back to IN_PROGRESS.
+   *  Mirrors signOffRun; runs already approved or mid-QC are left untouched. */
+  async signOffPackage(id: string, input: SignOffInput): Promise<PackageDetail | null> {
+    const existing = await prisma.package.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return null;
+    const approved = input.decision === 'APPROVED';
+    const approverName = input.approverName.trim() || null;
+    const approvalNote = input.note?.trim() || null;
+    await prisma.$transaction([
+      prisma.package.update({
+        where: { id },
+        data: { approverName, approvalNote, approvedAt: approved ? new Date() : null },
+      }),
+      prisma.testCycle.updateMany({
+        where: { packageId: id, stage: 'READY_FOR_APPROVAL' },
+        data: approved
+          ? { stage: 'APPROVED', approverName, approvalNote, approvedAt: new Date() }
+          : { stage: 'IN_PROGRESS', approverName: null, approvalNote, approvedAt: null },
+      }),
+    ]);
+    return this.getPackage(id);
   }
 
   async getExecution(id: string): Promise<ExecutionDetail | null> {

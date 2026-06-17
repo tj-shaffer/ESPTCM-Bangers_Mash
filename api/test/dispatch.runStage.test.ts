@@ -125,3 +125,18 @@ describe('dispatch run.signOff — approval guard', () => {
     ).rejects.toMatchObject({ status: 404 });
   });
 });
+
+describe('dispatch repo.deleteCase — surfaces failures', () => {
+  it("throws 409 when the store can't delete (no longer a silent false)", async () => {
+    const store = makeStore({ deleteCase: async () => false });
+    await expect(
+      dispatch(store, 'repo.deleteCase', { id: 'case-1' }, ACCOUNT, Role.TEST_AUTHOR),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('returns { deleted: true } on success', async () => {
+    const store = makeStore({ deleteCase: async () => true });
+    const res = await dispatch(store, 'repo.deleteCase', { id: 'case-1' }, ACCOUNT, Role.TEST_AUTHOR);
+    expect(res).toEqual({ deleted: true });
+  });
+})

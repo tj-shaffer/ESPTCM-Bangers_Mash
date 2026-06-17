@@ -118,12 +118,20 @@ export function RepositoryView() {
 
   const handleDelete = async () => {
     if (!selectedCaseId || !selectedCase.data) return;
-    if (!window.confirm(`Delete TC-${selectedCase.data.displayId} "${selectedCase.data.title}"? This cannot be undone.`)) {
+    if (
+      !window.confirm(
+        `Delete TC-${selectedCase.data.displayId} "${selectedCase.data.title}"? This also removes any execution results for it and cannot be undone.`,
+      )
+    ) {
       return;
     }
-    await deleteCase.mutateAsync(selectedCaseId);
-    setSelectedCaseId(null);
-    flashToast('Test case deleted');
+    try {
+      await deleteCase.mutateAsync(selectedCaseId);
+      setSelectedCaseId(null);
+      flashToast('Test case deleted');
+    } catch (err) {
+      flashToast(err instanceof Error ? err.message : 'Could not delete test case');
+    }
   };
 
   const handleMove = async (folderId: string) => {
@@ -138,11 +146,21 @@ export function RepositoryView() {
 
   const handleBulkDelete = async (ids: string[]) => {
     if (ids.length === 0) return;
-    if (!window.confirm(`Delete ${ids.length} test case${ids.length === 1 ? '' : 's'}? This cannot be undone.`)) return;
-    await Promise.all(ids.map((id) => deleteCase.mutateAsync(id)));
-    qc.invalidateQueries({ queryKey: ['repo'] });
-    if (selectedCaseId && ids.includes(selectedCaseId)) setSelectedCaseId(null);
-    flashToast(`Deleted ${ids.length} test case${ids.length === 1 ? '' : 's'}`);
+    if (
+      !window.confirm(
+        `Delete ${ids.length} test case${ids.length === 1 ? '' : 's'}? This also removes any execution results and cannot be undone.`,
+      )
+    )
+      return;
+    try {
+      await Promise.all(ids.map((id) => deleteCase.mutateAsync(id)));
+      if (selectedCaseId && ids.includes(selectedCaseId)) setSelectedCaseId(null);
+      flashToast(`Deleted ${ids.length} test case${ids.length === 1 ? '' : 's'}`);
+    } catch (err) {
+      flashToast(err instanceof Error ? err.message : 'Could not delete some test cases');
+    } finally {
+      qc.invalidateQueries({ queryKey: ['repo'] });
+    }
   };
 
   const handleBulkSetStatus = async (ids: string[], status: TestCaseStatus) => {

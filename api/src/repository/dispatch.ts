@@ -69,8 +69,11 @@ export async function dispatch(
       return updated;
     }
 
-    case 'repo.deleteCase':
-      return { deleted: await store.deleteCase(parse(key, payload).id) };
+    case 'repo.deleteCase': {
+      const ok = await store.deleteCase(parse(key, payload).id);
+      if (!ok) throw new DispatchError('Could not delete this test case.', 409);
+      return { deleted: true };
+    }
 
     case 'repo.duplicateCase': {
       const { id } = parse(key, payload);

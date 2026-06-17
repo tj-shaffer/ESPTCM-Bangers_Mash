@@ -329,9 +329,18 @@ export class PrismaStore implements TestCaseStore {
 
   async deleteCase(id: string): Promise<boolean> {
     try {
-      await prisma.testCase.delete({ where: { id } });
+      // TestExecution and CycleAssignment reference TestCase with RESTRICT (no
+      // cascade), so a case that's been added to any run can't be deleted until
+      // those are removed. Do it atomically; steps/versions cascade on their own.
+      await prisma.$transaction([
+        prisma.cycleAssignment.deleteMany({ where: { testCaseId: id } }),
+        prisma.testExecution.deleteMany({ where: { testCaseId: id } }),
+        prisma.testCase.delete({ where: { id } }),
+      ]);
       return true;
-    } catch {
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[store] deleteCase failed', err);
       return false;
     }
   }

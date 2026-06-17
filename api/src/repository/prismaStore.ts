@@ -26,6 +26,7 @@ import type {
   PackageSummary,
   Priority,
   RunExecutionSummary,
+  RunStage,
   StepResultPatch,
   TestCase,
   TestCaseStatus,
@@ -60,6 +61,7 @@ function runSummaryOf(c: {
   id: string;
   name: string;
   environment: string;
+  stage: string;
   createdAt: Date;
   assigneeName: string | null;
   packageId: string | null;
@@ -79,6 +81,7 @@ function runSummaryOf(c: {
     blocked: count('BLOCKED'),
     notStarted: count('NOT_STARTED'),
     createdAt: c.createdAt.toISOString(),
+    stage: c.stage as RunStage,
     assigneeName: c.assigneeName,
     packageId: c.packageId,
     packageName: c.package?.name ?? null,
@@ -485,11 +488,19 @@ export class PrismaStore implements TestCaseStore {
       environment: cycle.environment as Environment,
       status: rollup(executions.map((e) => e.status)),
       createdAt: cycle.createdAt.toISOString(),
+      stage: cycle.stage as RunStage,
       assigneeName: cycle.assigneeName,
       packageId: cycle.packageId,
       packageName: cycle.package?.name ?? null,
       executions,
     };
+  }
+
+  async setRunStage(id: string, stage: RunStage): Promise<TestRunDetail | null> {
+    const existing = await prisma.testCycle.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return null;
+    await prisma.testCycle.update({ where: { id }, data: { stage } });
+    return this.getRun(id);
   }
 
   async updateRun(id: string, patch: UpdateRunInput): Promise<TestRunDetail | null> {

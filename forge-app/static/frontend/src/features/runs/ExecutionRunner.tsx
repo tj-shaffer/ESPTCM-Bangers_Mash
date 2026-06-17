@@ -12,9 +12,11 @@ import {
   useDeleteAttachment,
   useExecution,
   useJiraOptions,
+  useLinkDefectJiraManual,
   useLinkDefectToJira,
   useSetStepResult,
 } from '../../api/runs';
+import { useAuth } from '../../context/AuthContext';
 import { EXEC_STATUS_LABEL, PRIORITIES, tcId } from '../../domain/types';
 import type { AttachmentView, ExecutionDetail, ExecutionStatus, Priority } from '../../domain/types';
 
@@ -181,6 +183,9 @@ function DefectsPanel({ exec, runId }: { exec: ExecutionDetail; runId: string })
   const createDefect = useCreateDefect(runId);
   const linkJira = useLinkDefectToJira(runId);
   const jiraOpts = useJiraOptions();
+  const auth = useAuth();
+  // Mohammad: managers control Jira tickets — testers log defects, managers link them.
+  const canManageJira = auth.can('defect.linkJira');
   const [typeByDefect, setTypeByDefect] = useState<Record<string, string>>({});
   const jiraTypes = jiraOpts.data?.issueTypes ?? [];
   const jiraReady = !!jiraOpts.data?.configured && jiraTypes.length > 0;
@@ -226,27 +231,32 @@ function DefectsPanel({ exec, runId }: { exec: ExecutionDetail; runId: string })
                 ) : (
                   <span className="esp-badge esp-badge-soft">{d.jiraIssueKey}</span>
                 )
-              ) : jiraReady ? (
-                <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                  <select
-                    className="esp-select"
-                    style={{ width: 'auto', padding: '4px 8px', fontSize: 12 }}
-                    value={typeByDefect[d.id] ?? jiraTypes[0] ?? ''}
-                    onChange={(e) => setTypeByDefect((m) => ({ ...m, [d.id]: e.target.value }))}
-                  >
-                    {jiraTypes.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="esp-btn esp-btn-secondary"
-                    onClick={() => linkJira.mutate({ defectId: d.id, issueType: typeByDefect[d.id] ?? jiraTypes[0] })}
-                    disabled={linkJira.isPending}
-                  >
-                    {linkJira.isPending && linkJira.variables?.defectId === d.id ? 'Creating…' : 'Create Jira issue'}
-                  </button>
+              ) : canManageJira ? (
+                <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <ManualJiraLink defectId={d.id} runId={runId} />
+                  {jiraReady ? (
+                    <>
+                      <select
+                        className="esp-select"
+                        style={{ width: 'auto', padding: '4px 8px', fontSize: 12 }}
+                        value={typeByDefect[d.id] ?? jiraTypes[0] ?? ''}
+                        onChange={(e) => setTypeByDefect((m) => ({ ...m, [d.id]: e.target.value }))}
+                      >
+                        {jiraTypes.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="esp-btn esp-btn-secondary"
+                        onClick={() => linkJira.mutate({ defectId: d.id, issueType: typeByDefect[d.id] ?? jiraTypes[0] })}
+                        disabled={linkJira.isPending}
+                      >
+                        {linkJira.isPending && linkJira.variables?.defectId === d.id ? 'Creating…' : 'Create Jira issue'}
+                      </button>
+                    </>
+                  ) : null}
                 </span>
               ) : null}
             </span>
@@ -299,6 +309,36 @@ function DefectsPanel({ exec, runId }: { exec: ExecutionDetail; runId: string })
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ManualJiraLink({ defectId, runId }: { defectId: string; runId: string }) {
+  const [key, setKey] = useState('');
+  const link = useLinkDefectJiraManual(runId);
+  const submit = () => {
+    if (key.trim()) link.mutate({ defectId, jiraIssueKey: key.trim() });
+  };
+  return (
+    <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+      <input
+        className="esp-input"
+        style={{ width: 120, padding: '4px 8px', fontSize: 12 }}
+        placeholder="PLOT-123"
+        value={key}
+        onChange={(e) => setKey(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submit();
+        }}
+      />
+      <button
+        className="esp-btn esp-btn-secondary"
+        onClick={submit}
+        disabled={!key.trim() || link.isPending}
+        title="Link an existing Jira issue (no ticket is created)"
+      >
+        {link.isPending ? 'Linking…' : '🔗 Link'}
+      </button>
+    </span>
   );
 }
 

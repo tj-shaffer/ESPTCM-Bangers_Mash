@@ -21,6 +21,7 @@ import type {
   PackageDetail,
   PackageSummary,
   Priority,
+  RunStage,
   StepResultPatch,
   TestCase,
   TestCaseSummary,
@@ -63,6 +64,7 @@ export interface TestCaseStore {
   createRun(input: CreateRunInput, ownerAccountId: string, projectKey?: string): Promise<TestRunDetail>;
   getRun(id: string): Promise<TestRunDetail | null>;
   updateRun(id: string, patch: UpdateRunInput): Promise<TestRunDetail | null>;
+  setRunStage(id: string, stage: RunStage): Promise<TestRunDetail | null>;
   deleteRun(id: string): Promise<boolean>;
 
   // packages (group runs for end-to-end review)

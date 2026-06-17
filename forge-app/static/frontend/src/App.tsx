@@ -23,11 +23,12 @@ const AdminView = lazy(() =>
   import('./features/admin/AdminView').then((m) => ({ default: m.AdminView })),
 );
 
-type View = 'repository' | 'runs' | 'packages' | 'dashboard' | 'admin';
+type View = 'repository' | 'runs' | 'review' | 'packages' | 'dashboard' | 'admin';
 
-const NAV: { key: View; label: string; adminOnly?: boolean }[] = [
+const NAV: { key: View; label: string; adminOnly?: boolean; managerOnly?: boolean }[] = [
   { key: 'repository', label: 'Repository' },
   { key: 'runs', label: 'Test Runs' },
+  { key: 'review', label: 'Review Queue', managerOnly: true },
   { key: 'packages', label: 'Packages' },
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'admin', label: 'User Roles', adminOnly: true },
@@ -37,6 +38,7 @@ export function App() {
   const auth = useAuth();
   const [view, setView] = useState<View>('repository');
   const isAdmin = auth.hasRole('SUPER_ADMIN');
+  const isManager = auth.hasRole('SUPER_ADMIN', 'TEST_MANAGER');
 
   return (
     <div className="esp-app">
@@ -48,6 +50,7 @@ export function App() {
         <nav className="esp-nav">
           {NAV.filter((n) => n.key === 'repository' || !STANDALONE)
             .filter((n) => !n.adminOnly || isAdmin)
+            .filter((n) => !n.managerOnly || isManager)
             .map((n) => (
             <button
               key={n.key}
@@ -67,7 +70,7 @@ export function App() {
         ) : null}
         <span className="esp-user">{auth.displayName ?? auth.accountId ?? 'Unknown user'}</span>
       </header>
-      {view === 'repository' || (view === 'admin' && !isAdmin) ? (
+      {view === 'repository' || (view === 'admin' && !isAdmin) || (view === 'review' && !isManager) ? (
         <RepositoryView />
       ) : (
         <Suspense
@@ -79,6 +82,8 @@ export function App() {
         >
           {view === 'runs' ? (
             <RunsView />
+          ) : view === 'review' ? (
+            <RunsView initialStageFilter="AWAITING_QC" heading="Review Queue" />
           ) : view === 'packages' ? (
             <PackagesView />
           ) : view === 'admin' ? (

@@ -5,21 +5,24 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Spinner from '@atlaskit/spinner';
 import { invokeResolver } from '../../api/client';
-import { useCreateRun, useDeleteRun, usePackages, useRun, useRuns } from '../../api/runs';
-import { ENVIRONMENTS, TEAM_MEMBERS, tcId } from '../../domain/types';
-import type { Environment, TestCaseSummary } from '../../domain/types';
+import { useCreateRun, useDeleteRun, usePackages, useRun, useRuns, useSetRunStage } from '../../api/runs';
+import { ENVIRONMENTS, RUN_STAGES, RUN_STAGE_LABEL, TEAM_MEMBERS, tcId } from '../../domain/types';
+import type { Environment, TestCaseSummary, TestRunDetail } from '../../domain/types';
 import { Modal, Toast } from '../../components/ui';
 import { ExecBadge, ExecutionRunner } from './ExecutionRunner';
 import { useAuth } from '../../context/AuthContext';
 
-export function RunsView() {
+export function RunsView({ initialStageFilter = '', heading = 'Test Runs' }: { initialStageFilter?: string; heading?: string } = {}) {
   const auth = useAuth();
   const canManageRuns = auth.can('run.create');
+  const isManager = auth.hasRole('SUPER_ADMIN', 'TEST_MANAGER');
+  const canSubmitStage = auth.can('run.setStage');
   const runs = useRuns();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [runnerExecId, setRunnerExecId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [assigneeFilter, setAssigneeFilter] = useState('');
+  const [stageFilter, setStageFilter] = useState(initialStageFilter);
   const [toast, setToast] = useState<string | null>(null);
 
   const run = useRun(selectedRunId);
@@ -30,16 +33,21 @@ export function RunsView() {
     () => [...new Set((runs.data ?? []).map((r) => r.assigneeName).filter((a): a is string => !!a))].sort(),
     [runs.data],
   );
+  const stageMatch = (r: { stage: string }) => {
+    if (!stageFilter) return true;
+    if (stageFilter === 'AWAITING_QC') return r.stage === 'COMPLETED_BY_TESTER' || r.stage === 'IN_QC_REVIEW';
+    return r.stage === stageFilter;
+  };
   const visibleRuns = useMemo(
-    () => (runs.data ?? []).filter((r) => !assigneeFilter || r.assigneeName === assigneeFilter),
-    [runs.data, assigneeFilter],
+    () => (runs.data ?? []).filter((r) => (!assigneeFilter || r.assigneeName === assigneeFilter) && stageMatch(r)),
+    [runs.data, assigneeFilter, stageFilter],
   );
 
   useEffect(() => {
-    if (!selectedRunId && runs.data && runs.data.length > 0) {
-      setSelectedRunId(runs.data[0]!.id);
+    if (!selectedRunId && visibleRuns.length > 0) {
+      setSelectedRunId(visibleRuns[0]!.id);
     }
-  }, [runs.data, selectedRunId]);
+  }, [visibleRuns, selectedRunId]);
 
   const flash = (m: string) => {
     setToast(m);
@@ -60,13 +68,30 @@ export function RunsView() {
     <div className="esp-body">
       <aside className="esp-sidebar">
         <div className="esp-sidebar-head">
-          <span className="esp-sidebar-title">Test Runs</span>
+          <span className="esp-sidebar-title">{heading}</span>
           {canManageRuns ? (
             <button className="esp-btn esp-btn-ghost" onClick={() => setShowNew(true)}>
               + New run
             </button>
           ) : null}
         </div>
+        <select
+          className="esp-select"
+          style={{ margin: '8px 10px 0', width: 'calc(100% - 20px)' }}
+          value={stageFilter}
+          onChange={(e) => {
+            setStageFilter(e.target.value);
+            setSelectedRunId(null);
+          }}
+        >
+          <option value="">All stages</option>
+          <option value="AWAITING_QC">Awaiting QC review</option>
+          {RUN_STAGES.map((s) => (
+            <option key={s} value={s}>
+              {RUN_STAGE_LABEL[s]}
+            </option>
+          ))}
+        </select>
         {assignees.length > 0 ? (
           <select
             className="esp-select"
@@ -86,7 +111,7 @@ export function RunsView() {
           {(runs.data ?? []).length === 0 ? (
             <div className="esp-empty">No runs yet. Create one to start executing.</div>
           ) : visibleRuns.length === 0 ? (
-            <div className="esp-empty">No runs assigned to {assigneeFilter}.</div>
+            <div className="esp-empty">No runs match the current filters.</div>
           ) : (
             visibleRuns.map((r) => (
               <div
@@ -100,6 +125,7 @@ export function RunsView() {
                     {r.environment} · {r.passed}/{r.total} passed
                     {r.assigneeName ? ` · 👤 ${r.assigneeName}` : ''}
                     {r.packageName ? ` · 📦 ${r.packageName}` : ''}
+                    {r.stage !== 'IN_PROGRESS' ? ` · ⚑ ${RUN_STAGE_LABEL[r.stage]}` : ''}
                   </span>
                 </div>
                 <ExecBadge status={r.status} />
@@ -119,7 +145,9 @@ export function RunsView() {
                 <h2>{detail.name}</h2>
                 <span className="esp-badge esp-badge-soft">{detail.environment}</span>
                 <ExecBadge status={detail.status} />
+                <span className={`esp-stage esp-stage-${detail.stage}`}>{RUN_STAGE_LABEL[detail.stage]}</span>
                 <div className="esp-header-spacer" />
+                <StageControls run={detail} isManager={isManager} canSubmit={canSubmitStage} onDone={flash} />
                 {canManageRuns ? (
                   <button
                     className="esp-btn esp-btn-danger"
@@ -189,6 +217,49 @@ export function RunsView() {
 
       {toast ? <Toast message={toast} /> : null}
     </div>
+  );
+}
+
+/** QC lifecycle transition buttons, shown by current stage + the user's role. */
+function StageControls({
+  run,
+  isManager,
+  canSubmit,
+  onDone,
+}: {
+  run: TestRunDetail;
+  isManager: boolean;
+  canSubmit: boolean;
+  onDone: (msg: string) => void;
+}) {
+  const setStage = useSetRunStage();
+  const busy = setStage.isPending;
+  const go = (stage: Parameters<typeof setStage.mutate>[0]['stage'], msg: string) =>
+    setStage.mutate({ id: run.id, stage }, { onSuccess: () => onDone(msg) });
+
+  return (
+    <>
+      {run.stage === 'IN_PROGRESS' && canSubmit ? (
+        <button className="esp-btn esp-btn-secondary" disabled={busy} onClick={() => go('COMPLETED_BY_TESTER', 'Submitted for QC')}>
+          Submit for QC
+        </button>
+      ) : null}
+      {isManager && run.stage === 'COMPLETED_BY_TESTER' ? (
+        <button className="esp-btn esp-btn-primary" disabled={busy} onClick={() => go('IN_QC_REVIEW', 'QC review started')}>
+          Start QC review
+        </button>
+      ) : null}
+      {isManager && run.stage === 'IN_QC_REVIEW' ? (
+        <button className="esp-btn esp-btn-primary" disabled={busy} onClick={() => go('READY_FOR_APPROVAL', 'Marked ready for approval')}>
+          Mark ready for approval
+        </button>
+      ) : null}
+      {isManager && run.stage !== 'IN_PROGRESS' && run.stage !== 'APPROVED' ? (
+        <button className="esp-btn esp-btn-ghost" disabled={busy} onClick={() => go('IN_PROGRESS', 'Sent back to in progress')}>
+          Send back
+        </button>
+      ) : null}
+    </>
   );
 }
 

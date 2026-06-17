@@ -18,6 +18,9 @@ const ALL: Role[] = [
 ];
 const EXECUTE: Role[] = [Role.SUPER_ADMIN, Role.TEST_MANAGER, Role.TEST_AUTHOR, Role.FIELD_OPERATOR];
 const AUTHOR: Role[] = [Role.SUPER_ADMIN, Role.TEST_MANAGER, Role.TEST_AUTHOR];
+// QC / defect-ticket control — managers (and super admins) only. Mohammad: "we
+// control the bug tickets" and QC before anything reaches an approver.
+const MANAGE: Role[] = [Role.SUPER_ADMIN, Role.TEST_MANAGER];
 const ADMIN: Role[] = [Role.SUPER_ADMIN];
 
 export const PERMISSIONS: Record<string, Role[]> = {
@@ -42,7 +45,13 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'exec.deleteAttachment': EXECUTE,
   'exec.complete': EXECUTE,
   'defect.create': EXECUTE,
-  'defect.toJira': EXECUTE,
+  // A tester can submit a run for QC; the rest of the stage machine is
+  // manager-gated inside dispatch.
+  'run.setStage': EXECUTE,
+
+  // ---------- QC / defect tickets (managers + super admins) ----------
+  'defect.toJira': MANAGE,
+  'defect.linkJira': MANAGE,
 
   // ---------- authoring (authors, managers, super admins) ----------
   'repo.createFolder': AUTHOR,

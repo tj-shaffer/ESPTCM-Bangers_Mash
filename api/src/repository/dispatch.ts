@@ -8,7 +8,7 @@
 import { Role } from '@prisma/client';
 import type { TestCaseStore } from './store';
 import { prisma } from '../db/prisma';
-import { jiraCheck, jiraConfigured, jiraCreateProblem, jiraOptions } from '../services/jira';
+import { jiraBrowseUrl, jiraCheck, jiraConfigured, jiraCreateProblem, jiraOptions } from '../services/jira';
 import type {
   AddAttachmentInput,
   CreateDefectInput,
@@ -18,6 +18,7 @@ import type {
   CreateTestCaseInput,
   ExecutionStatus,
   ImportedCaseRow,
+  RunStage,
   StepResultPatch,
   UpdateRunInput,
   UpdateTestCaseInput,
@@ -25,6 +26,14 @@ import type {
 
 /** Marking a step to one of these requires a screenshot when the step demands one. */
 const TERMINAL_STATUSES: ExecutionStatus[] = ['PASS', 'FAIL', 'BLOCKED', 'SKIPPED', 'ENHANCEMENT'];
+
+const RUN_STAGES: RunStage[] = [
+  'IN_PROGRESS',
+  'COMPLETED_BY_TESTER',
+  'IN_QC_REVIEW',
+  'READY_FOR_APPROVAL',
+  'APPROVED',
+];
 
 export class DispatchError extends Error {
   constructor(
@@ -136,6 +145,22 @@ export async function dispatch(
       const { id, patch } = payload as { id?: string; patch?: UpdateRunInput };
       if (!id) throw new DispatchError('Run id is required');
       const updated = await store.updateRun(id, patch ?? {});
+      if (!updated) throw new DispatchError('Run not found', 404);
+      return updated;
+    }
+
+    case 'run.setStage': {
+      const { id, stage } = payload as { id?: string; stage?: RunStage };
+      if (!id) throw new DispatchError('Run id is required');
+      if (!stage || !RUN_STAGES.includes(stage)) throw new DispatchError('A valid run stage is required');
+      // A tester may only submit their run for QC (→ COMPLETED_BY_TESTER); every
+      // other transition — QC review, ready-for-approval, sending it back — is
+      // manager-controlled. See ENHANCEMENTS #10.
+      const isManager = role === Role.SUPER_ADMIN || role === Role.TEST_MANAGER;
+      if (!isManager && stage !== 'COMPLETED_BY_TESTER') {
+        throw new DispatchError('Only a manager can advance a run through QC.', 403);
+      }
+      const updated = await store.setRunStage(id, stage);
       if (!updated) throw new DispatchError('Run not found', 404);
       return updated;
     }
@@ -259,6 +284,22 @@ export async function dispatch(
       } catch (err) {
         throw new DispatchError(err instanceof Error ? err.message : 'Jira create failed', 502);
       }
+    }
+
+    case 'defect.linkJira': {
+      // Manually link an EXISTING Jira issue key — no ticket is created. The
+      // manager confirms the bug and pastes the key. See ENHANCEMENTS #7.
+      const id = payload.id as string | undefined;
+      const rawKey = (payload.jiraIssueKey as string | undefined) ?? '';
+      const key = rawKey.trim().toUpperCase();
+      if (!id) throw new DispatchError('Defect id is required');
+      if (!key) throw new DispatchError('A Jira issue key is required');
+      const defect = await store.getDefect(id);
+      if (!defect) throw new DispatchError('Defect not found', 404);
+      const url = jiraBrowseUrl(key);
+      const res = await store.attachJiraKey(id, key, url ? { url } : undefined);
+      if (!res) throw new DispatchError('Defect not found', 404);
+      return res;
     }
 
     case 'report.dashboard':

@@ -81,6 +81,16 @@ enum ExecutionStatus {
   ENHANCEMENT
 }
 
+// Workflow position of a run, independent of its pass/fail health. Drives the
+// QC review queue and the path to approval. See ENHANCEMENTS #10/#11.
+enum RunStage {
+  IN_PROGRESS
+  COMPLETED_BY_TESTER
+  IN_QC_REVIEW
+  READY_FOR_APPROVAL
+  APPROVED
+}
+
 enum TestPlanType {
   REGRESSION
   UAT
@@ -313,6 +323,8 @@ model TestCycle {
   package     Package?        @relation(fields: [packageId], references: [id], onDelete: SetNull)
   name        String
   environment Environment
+  // QC workflow position (tester → manager review → ready for approval).
+  stage       RunStage        @default(IN_PROGRESS)
   // Identity-light run assignee (free text / seeded name). Real per-user
   // enforcement is deferred to the Azure AD / SSO state — see ENHANCEMENTS #5.
   assigneeName String?

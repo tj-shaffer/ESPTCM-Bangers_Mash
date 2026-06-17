@@ -171,6 +171,30 @@ export const EXEC_STATUS_LABEL: Record<ExecutionStatus, string> = {
   ENHANCEMENT: 'Nice to have',
 };
 
+/** Run workflow position (QC review pipeline), independent of pass/fail health. */
+export type RunStage =
+  | 'IN_PROGRESS'
+  | 'COMPLETED_BY_TESTER'
+  | 'IN_QC_REVIEW'
+  | 'READY_FOR_APPROVAL'
+  | 'APPROVED';
+
+export const RUN_STAGES: RunStage[] = [
+  'IN_PROGRESS',
+  'COMPLETED_BY_TESTER',
+  'IN_QC_REVIEW',
+  'READY_FOR_APPROVAL',
+  'APPROVED',
+];
+
+export const RUN_STAGE_LABEL: Record<RunStage, string> = {
+  IN_PROGRESS: 'In progress',
+  COMPLETED_BY_TESTER: 'Submitted for QC',
+  IN_QC_REVIEW: 'In QC review',
+  READY_FOR_APPROVAL: 'Ready for approval',
+  APPROVED: 'Approved',
+};
+
 export interface CreateRunInput {
   name: string;
   environment?: Environment;
@@ -199,6 +223,7 @@ export interface TestRunSummary {
   blocked: number;
   notStarted: number;
   createdAt: string;
+  stage: RunStage;
   assigneeName?: string | null;
   packageId?: string | null;
   packageName?: string | null;
@@ -259,6 +284,7 @@ export interface TestRunDetail {
   environment: Environment;
   status: ExecutionStatus;
   createdAt: string;
+  stage: RunStage;
   assigneeName?: string | null;
   packageId?: string | null;
   packageName?: string | null;

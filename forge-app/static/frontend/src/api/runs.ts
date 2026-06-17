@@ -13,6 +13,7 @@ import type {
   ExecutionDetail,
   PackageDetail,
   PackageSummary,
+  RunStage,
   StepResultPatch,
   TestRunDetail,
   TestRunSummary,
@@ -75,6 +76,19 @@ export function useDeleteRun() {
       qc.invalidateQueries({ queryKey: keys.runs });
       qc.invalidateQueries({ queryKey: keys.packages });
       qc.invalidateQueries({ queryKey: keys.dashboard });
+    },
+  });
+}
+
+export function useSetRunStage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; stage: RunStage }) =>
+      invokeResolver<TestRunDetail>('run.setStage', { ...vars }),
+    onSuccess: (run) => {
+      qc.setQueryData(keys.run(run.id), run);
+      qc.invalidateQueries({ queryKey: keys.runs });
+      qc.invalidateQueries({ queryKey: keys.packages });
     },
   });
 }
@@ -206,6 +220,19 @@ export function useLinkDefectToJira(runId: string) {
   return useMutation({
     mutationFn: (vars: { defectId: string; issueType?: string }) =>
       invokeResolver<ExecutionDetail>('defect.toJira', { id: vars.defectId, issueType: vars.issueType }),
+    onSuccess: (exec) => {
+      qc.setQueryData(keys.exec(exec.id), exec);
+      qc.invalidateQueries({ queryKey: keys.run(runId) });
+    },
+  });
+}
+
+/** Manually link an EXISTING Jira issue key to a defect (no ticket created). */
+export function useLinkDefectJiraManual(runId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { defectId: string; jiraIssueKey: string }) =>
+      invokeResolver<ExecutionDetail>('defect.linkJira', { id: vars.defectId, jiraIssueKey: vars.jiraIssueKey }),
     onSuccess: (exec) => {
       qc.setQueryData(keys.exec(exec.id), exec);
       qc.invalidateQueries({ queryKey: keys.run(runId) });

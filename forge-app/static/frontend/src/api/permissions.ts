@@ -9,6 +9,7 @@ export type Role = 'SUPER_ADMIN' | 'TEST_MANAGER' | 'TEST_AUTHOR' | 'FIELD_OPERA
 const ALL: Role[] = ['SUPER_ADMIN', 'TEST_MANAGER', 'TEST_AUTHOR', 'FIELD_OPERATOR', 'OBSERVER'];
 const EXECUTE: Role[] = ['SUPER_ADMIN', 'TEST_MANAGER', 'TEST_AUTHOR', 'FIELD_OPERATOR'];
 const AUTHOR: Role[] = ['SUPER_ADMIN', 'TEST_MANAGER', 'TEST_AUTHOR'];
+const MANAGE: Role[] = ['SUPER_ADMIN', 'TEST_MANAGER'];
 const ADMIN: Role[] = ['SUPER_ADMIN'];
 
 export const PERMISSIONS: Record<string, Role[]> = {
@@ -31,7 +32,10 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'exec.deleteAttachment': EXECUTE,
   'exec.complete': EXECUTE,
   'defect.create': EXECUTE,
-  'defect.toJira': EXECUTE,
+  'run.setStage': EXECUTE,
+
+  'defect.toJira': MANAGE,
+  'defect.linkJira': MANAGE,
 
   'repo.createFolder': AUTHOR,
   'repo.createCase': AUTHOR,

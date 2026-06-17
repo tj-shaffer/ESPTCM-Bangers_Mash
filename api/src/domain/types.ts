@@ -129,6 +129,14 @@ export type ExecutionStatus =
   | 'SKIPPED'
   | 'ENHANCEMENT';
 
+/** Run workflow position (QC review pipeline), independent of pass/fail health. */
+export type RunStage =
+  | 'IN_PROGRESS'
+  | 'COMPLETED_BY_TESTER'
+  | 'IN_QC_REVIEW'
+  | 'READY_FOR_APPROVAL'
+  | 'APPROVED';
+
 export interface CreateRunInput {
   name: string;
   environment?: Environment;
@@ -157,6 +165,7 @@ export interface TestRunSummary {
   blocked: number;
   notStarted: number;
   createdAt: string;
+  stage: RunStage;
   assigneeName?: string | null;
   packageId?: string | null;
   packageName?: string | null;
@@ -217,6 +226,7 @@ export interface TestRunDetail {
   environment: Environment;
   status: ExecutionStatus;
   createdAt: string;
+  stage: RunStage;
   assigneeName?: string | null;
   packageId?: string | null;
   packageName?: string | null;

@@ -718,6 +718,23 @@ button {
 .esp-exec-SKIPPED { background: rgba(143, 161, 173, 0.16); color: var(--esp-muted); }
 .esp-exec-ENHANCEMENT { background: rgba(124, 92, 196, 0.14); color: #6b4fb8; }
 
+/* ---------- run stage (QC lifecycle) ---------- */
+
+.esp-stage {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.esp-stage-IN_PROGRESS { background: rgba(143, 161, 173, 0.16); color: var(--esp-muted); }
+.esp-stage-COMPLETED_BY_TESTER { background: rgba(79, 148, 188, 0.16); color: var(--esp-blue-strong); }
+.esp-stage-IN_QC_REVIEW { background: rgba(176, 125, 26, 0.14); color: var(--esp-draft); }
+.esp-stage-READY_FOR_APPROVAL { background: rgba(124, 92, 196, 0.14); color: #6b4fb8; }
+.esp-stage-APPROVED { background: rgba(46, 125, 91, 0.13); color: var(--esp-active); }
+
 /* ---------- progress bar ---------- */
 
 .esp-progress {

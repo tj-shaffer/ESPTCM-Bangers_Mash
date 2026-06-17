@@ -37,6 +37,13 @@ export function jiraConfigured(): boolean {
   return !!jiraCfg();
 }
 
+/** Browse URL for an issue key, or undefined if Jira isn't configured. No network call. */
+export function jiraBrowseUrl(key: string): string | undefined {
+  const cfg = jiraCfg();
+  if (!cfg) return undefined;
+  return `${cfg.baseUrl.replace(/\/$/, '')}/browse/${key.trim()}`;
+}
+
 /** The issue types offered for filing (from JIRA_PROBLEM_ISSUE_TYPE). No network call.
  *  Sub-tasks are excluded — they require a parent and can't be created standalone. */
 export function jiraOptions(): { configured: boolean; issueTypes: string[] } {

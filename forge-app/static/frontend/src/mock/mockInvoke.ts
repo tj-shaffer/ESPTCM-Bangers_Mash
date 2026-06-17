@@ -831,6 +831,11 @@ class MockStore {
     const u = this.users.find((x) => x.subjectId === subjectId);
     return u ? { subjectId: u.subjectId, email: u.email } : null;
   }
+  deleteUser(subjectId: string): { deleted: boolean } {
+    const before = this.users.length;
+    this.users = this.users.filter((u) => u.subjectId !== subjectId);
+    return { deleted: this.users.length < before };
+  }
 
   // ---------- seed runs/executions/packages/users ----------
 
@@ -1132,6 +1137,8 @@ export async function mockInvoke<T>(key: string, payload: Record<string, unknown
       return store.createUser(p.email, p.displayName, p.role) as T;
     case 'admin.resetPassword':
       return store.resetUserPassword(p.accountId) as T;
+    case 'admin.deleteUser':
+      return store.deleteUser(p.accountId) as T;
     case 'account.changePassword':
       return { ok: true } as T;
 

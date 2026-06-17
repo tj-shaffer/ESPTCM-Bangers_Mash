@@ -140,3 +140,12 @@ describe('dispatch repo.deleteCase — surfaces failures', () => {
     expect(res).toEqual({ deleted: true });
   });
 })
+
+describe('dispatch admin.deleteUser — guards', () => {
+  it('refuses to delete your own account (400), before any DB call', async () => {
+    const store = makeStore();
+    await expect(
+      dispatch(store, 'admin.deleteUser', { accountId: ACCOUNT }, ACCOUNT, Role.SUPER_ADMIN),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+})

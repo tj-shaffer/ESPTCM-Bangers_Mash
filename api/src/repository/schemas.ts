@@ -199,6 +199,7 @@ export const schemas = {
     accountId: req('accountId is required'),
     password: reqMin(8, 'Temporary password must be at least 8 characters'),
   }),
+  'admin.deleteUser': z.object({ accountId: req('accountId is required') }),
   'account.changePassword': z.object({
     currentPassword: req('Current and new passwords are required'),
     newPassword: z

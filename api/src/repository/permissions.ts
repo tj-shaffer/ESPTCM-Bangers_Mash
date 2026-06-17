@@ -77,6 +77,7 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'admin.setRole': ADMIN,
   'admin.createUser': ADMIN,
   'admin.resetPassword': ADMIN,
+  'admin.deleteUser': ADMIN,
 };
 
 /** True if `role` may invoke `key`. Unknown keys fail closed. */

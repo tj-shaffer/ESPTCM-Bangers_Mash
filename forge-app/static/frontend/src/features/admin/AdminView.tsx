@@ -10,6 +10,7 @@ import {
   useSetRole,
   useCreateUser,
   useResetPassword,
+  useDeleteUser,
   type ManagedUser,
 } from '../../api/admin';
 import { ROLE_LABELS, type Role } from '../../api/permissions';
@@ -21,8 +22,40 @@ export function AdminView() {
   const { data: users, isLoading, error } = useUsers();
   const setRole = useSetRole();
   const resetPassword = useResetPassword();
+  const deleteUser = useDeleteUser();
   const auth = useAuth();
   const [notice, setNotice] = useState<string | null>(null);
+
+  const onDelete = async (u: ManagedUser) => {
+    if (!window.confirm(`Delete ${u.displayName} (${u.email ?? 'no email'})? This permanently removes their account and access.`)) {
+      return;
+    }
+    try {
+      await deleteUser.mutateAsync(u.subjectId);
+      setNotice(`Deleted ${u.displayName}.`);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'Could not delete user.');
+    }
+  };
+
+  const onRemoveAll = async () => {
+    const others = (users ?? []).filter((u) => u.subjectId !== auth.accountId);
+    if (others.length === 0) return;
+    if (
+      !window.confirm(
+        `Remove access for ALL ${others.length} other user${others.length === 1 ? '' : 's'}? This permanently deletes every account except your own and cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    const results = await Promise.allSettled(others.map((u) => deleteUser.mutateAsync(u.subjectId)));
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    setNotice(
+      failed === 0
+        ? `Removed ${others.length} user${others.length === 1 ? '' : 's'}.`
+        : `Removed ${others.length - failed} of ${others.length}; ${failed} could not be deleted.`,
+    );
+  };
 
   const onReset = async (u: ManagedUser) => {
     const pw = window.prompt(`New temporary password for ${u.displayName} (min 8 chars):`);
@@ -75,6 +108,20 @@ export function AdminView() {
       {isLoading ? <p className="esp-muted">Loading users…</p> : null}
       {error ? <p className="esp-error">Could not load users.</p> : null}
 
+      {users && users.filter((u) => u.subjectId !== auth.accountId).length > 0 ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: 16 }}>
+          <button
+            type="button"
+            className="esp-btn esp-btn-danger"
+            disabled={deleteUser.isPending}
+            onClick={() => void onRemoveAll()}
+            title="Permanently delete every account except your own"
+          >
+            Remove all other users
+          </button>
+        </div>
+      ) : null}
+
       {users && users.length > 0 ? (
         <table className="esp-table" style={{ width: '100%', marginTop: 12 }}>
           <thead>
@@ -82,7 +129,7 @@ export function AdminView() {
               <th style={{ textAlign: 'left' }}>Name</th>
               <th style={{ textAlign: 'left' }}>Email</th>
               <th style={{ textAlign: 'left' }}>Role</th>
-              <th style={{ textAlign: 'left' }}>Password</th>
+              <th style={{ textAlign: 'left' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -112,14 +159,26 @@ export function AdminView() {
                     </select>
                   </td>
                   <td>
-                    <button
-                      type="button"
-                      className="esp-btn esp-btn-ghost"
-                      disabled={resetPassword.isPending}
-                      onClick={() => void onReset(u)}
-                    >
-                      Reset
-                    </button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        type="button"
+                        className="esp-btn esp-btn-ghost"
+                        disabled={resetPassword.isPending}
+                        onClick={() => void onReset(u)}
+                      >
+                        Reset password
+                      </button>
+                      {isSelf ? null : (
+                        <button
+                          type="button"
+                          className="esp-btn esp-btn-danger"
+                          disabled={deleteUser.isPending}
+                          onClick={() => void onDelete(u)}
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );

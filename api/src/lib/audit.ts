@@ -39,6 +39,7 @@ export const WRITE_KEYS: ReadonlySet<string> = new Set([
   'admin.setRole',
   'admin.createUser',
   'admin.resetPassword',
+  'admin.deleteUser',
   'account.changePassword',
 ]);
 
@@ -46,7 +47,7 @@ export const WRITE_KEYS: ReadonlySet<string> = new Set([
  * Keys that write their own richer before/after entry inside dispatch. The
  * route skips its baseline entry for these so each action logs exactly once.
  */
-export const SELF_AUDITED: ReadonlySet<string> = new Set(['admin.setRole', 'run.signOff']);
+export const SELF_AUDITED: ReadonlySet<string> = new Set(['admin.setRole', 'admin.deleteUser', 'run.signOff']);
 
 /** Entity type from an invoke key, e.g. "run.setStage" -> "run". */
 export function auditEntityType(key: string): string {

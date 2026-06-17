@@ -55,10 +55,10 @@ function folderPathNames(nodes: FolderNode[], id: string): string[] {
   return (walk(nodes, []) ?? []).map((f) => f.name);
 }
 
-export function RepositoryView() {
+export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | null } = {}) {
   const tree = useFolderTree();
   const [folder, setFolder] = useState<FolderNode | null>(null);
-  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(deepCaseId);
   const [creatingCase, setCreatingCase] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showNewFolder, setShowNewFolder] = useState(false);
@@ -78,16 +78,45 @@ export function RepositoryView() {
   const duplicateCase = useDuplicateCase();
   const createFolder = useCreateFolder();
 
-  // Auto-select a sensible default folder once the tree loads.
+  // Auto-select a sensible default folder once the tree loads — unless a case is
+  // deep-linked, in which case the effect below opens that case's folder.
   useEffect(() => {
-    if (!folder && tree.data && tree.data.length > 0) {
+    if (!folder && !selectedCaseId && tree.data && tree.data.length > 0) {
       setFolder(findFirstFolder(tree.data));
     }
-  }, [tree.data, folder]);
+  }, [tree.data, folder, selectedCaseId]);
+
+  // Incoming deep link (#repository/<caseId>): open that case.
+  useEffect(() => {
+    if (deepCaseId && deepCaseId !== selectedCaseId) {
+      setSelectedCaseId(deepCaseId);
+      setCreatingCase(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepCaseId]);
+
+  // Follow the selected case into its folder when it isn't the current one
+  // (a no-op in normal use; switches folders for a deep-linked case).
+  useEffect(() => {
+    const c = selectedCase.data;
+    if (c && c.folderId !== folder?.id) {
+      const f = findFolderById(tree.data ?? [], c.folderId);
+      if (f) setFolder(f);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCase.data, tree.data]);
 
   const flashToast = (msg: string) => {
     setToast(msg);
     window.setTimeout(() => setToast(null), 2600);
+  };
+
+  const copyCaseLink = (caseId: string) => {
+    const url = `${window.location.origin}${window.location.pathname}#repository/${caseId}`;
+    void navigator.clipboard
+      ?.writeText(url)
+      .then(() => flashToast('Link copied to clipboard'))
+      .catch(() => flashToast(url));
   };
 
   const saving = createCase.isPending || updateCase.isPending;
@@ -290,6 +319,7 @@ export function RepositoryView() {
             folderOptions={flattenFolders(tree.data ?? [])}
             folderPath={casePath}
             onMove={canAuthor ? handleMove : undefined}
+            onCopyLink={() => copyCaseLink(selectedCase.data!.id)}
             saving={saving}
             onSave={handleSave}
             onDuplicate={canAuthor ? handleDuplicate : undefined}

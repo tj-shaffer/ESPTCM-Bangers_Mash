@@ -58,6 +58,8 @@ interface Props {
   folderPath?: string[];
   /** Move the current case to another folder. */
   onMove?: (folderId: string) => void;
+  /** Copy a shareable deep link to this case. */
+  onCopyLink?: () => void;
   /** Read-only viewers (e.g. OBSERVER) — hide the save action. */
   readOnly?: boolean;
 }
@@ -111,6 +113,7 @@ export function TestCaseEditor({
   folderOptions,
   folderPath,
   onMove,
+  onCopyLink,
   readOnly = false,
 }: Props) {
   const [form, setForm] = useState<FormState>(() => toForm(testCase));
@@ -215,6 +218,11 @@ export function TestCaseEditor({
               ))}
             </select>
           </label>
+        ) : null}
+        {!isNew && onCopyLink ? (
+          <button className="esp-btn esp-btn-ghost" onClick={onCopyLink} title="Copy a shareable link to this test case">
+            🔗 Copy link
+          </button>
         ) : null}
         {!isNew && onDuplicate ? (
           <button className="esp-btn esp-btn-ghost" onClick={onDuplicate} disabled={saving}>

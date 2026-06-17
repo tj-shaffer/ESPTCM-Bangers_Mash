@@ -146,6 +146,14 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
     }
   };
 
+  // Save the new case but stay in create mode with a blank form (the editor
+  // resets itself), so a folder can be built out without the create→reselect cycle.
+  const handleSaveAndNew = async (input: Omit<Parameters<typeof createCase.mutateAsync>[0], 'folderId'>) => {
+    if (!folder) return;
+    const created = await createCase.mutateAsync({ ...input, folderId: folder.id });
+    flashToast(`Created TC-${created.displayId} — add another`);
+  };
+
   const handleDuplicate = async () => {
     if (!selectedCaseId) return;
     const copy = await duplicateCase.mutateAsync(selectedCaseId);
@@ -350,6 +358,7 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
             folderPath={selectedFolderPath}
             saving={saving}
             onSave={handleSave}
+            onSaveAndNew={handleSaveAndNew}
             onCancelNew={() => setCreatingCase(false)}
           />
         ) : selectedCaseId && selectedCase.data ? (

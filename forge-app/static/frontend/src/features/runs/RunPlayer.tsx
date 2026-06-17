@@ -226,6 +226,16 @@ function RunSummary({
               {setStage.isPending ? 'Submitting…' : 'Hand off for QC review'}
             </button>
           ) : null}
+          <button
+            className="esp-btn esp-btn-secondary"
+            style={canHandOff ? undefined : { marginRight: 'auto' }}
+            onClick={() => {
+              window.location.hash = `dashboard/${detail.id}`;
+            }}
+            title="See this run's results in the dashboard"
+          >
+            📊 View in dashboard
+          </button>
           <button className="esp-btn esp-btn-primary" onClick={onExit}>
             Done
           </button>

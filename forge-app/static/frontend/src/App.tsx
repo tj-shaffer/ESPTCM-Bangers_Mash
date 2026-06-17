@@ -137,7 +137,7 @@ export function App() {
           ) : view === 'admin' ? (
             <AdminView />
           ) : (
-            <DashboardView />
+            <DashboardView deepRunId={entityId} />
           )}
         </Suspense>
       )}

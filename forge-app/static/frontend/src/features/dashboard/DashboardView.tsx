@@ -1,7 +1,7 @@
 /** Reporting dashboard: KPI cards + status / vendor / environment charts +
  *  recent executions. */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Spinner from '@atlaskit/spinner';
 import {
   Bar,
@@ -78,13 +78,22 @@ const STATUS_COLOR: Record<ExecutionStatus, string> = {
   ENHANCEMENT: '#6B4FB8',
 };
 
-export function DashboardView() {
+export function DashboardView({ deepRunId = null }: { deepRunId?: string | null } = {}) {
   const [projectKey, setProjectKey] = useState('');
   const [folderId, setFolderId] = useState('');
   const [packageId, setPackageId] = useState('');
-  const [runId, setRunId] = useState('');
+  const [runId, setRunId] = useState(deepRunId ?? '');
   const [testType, setTestType] = useState<TestType | ''>('');
   const [exporting, setExporting] = useState(false);
+
+  // Arriving from a run summary's "View in dashboard" (#dashboard/<runId>):
+  // pre-select that run so the charts open already scoped to it.
+  useEffect(() => {
+    if (deepRunId) {
+      setRunId(deepRunId);
+      setPackageId('');
+    }
+  }, [deepRunId]);
 
   const filters: DashboardFilters = useMemo(
     () => ({

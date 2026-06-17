@@ -1,6 +1,7 @@
 /** Repository: folder tree + case list + editor, plus import & folder creation. */
 
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import Spinner from '@atlaskit/spinner';
 import type { FolderNode } from '../../domain/types';
 import {
@@ -31,6 +32,15 @@ function findFirstFolder(nodes: FolderNode[]): FolderNode | null {
   return nodes[0] ?? null;
 }
 
+function findFolderById(nodes: FolderNode[], id: string): FolderNode | null {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    const hit = findFolderById(n.children, id);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 export function RepositoryView() {
   const tree = useFolderTree();
   const [folder, setFolder] = useState<FolderNode | null>(null);
@@ -47,6 +57,7 @@ export function RepositoryView() {
   const cases = useCases(folder?.id);
   const selectedCase = useCase(creatingCase ? null : selectedCaseId);
 
+  const qc = useQueryClient();
   const createCase = useCreateCase();
   const updateCase = useUpdateCase();
   const deleteCase = useDeleteCase();
@@ -95,6 +106,16 @@ export function RepositoryView() {
     await deleteCase.mutateAsync(selectedCaseId);
     setSelectedCaseId(null);
     flashToast('Test case deleted');
+  };
+
+  const handleMove = async (folderId: string) => {
+    if (!selectedCaseId) return;
+    await updateCase.mutateAsync({ id: selectedCaseId, patch: { folderId } });
+    // Both the source and destination folder lists + tree counts change.
+    qc.invalidateQueries({ queryKey: ['repo'] });
+    const target = findFolderById(tree.data ?? [], folderId);
+    if (target) setFolder(target);
+    flashToast(`Moved to ${target?.name ?? 'folder'}`);
   };
 
   if (tree.isLoading) {
@@ -196,6 +217,8 @@ export function RepositoryView() {
             testCase={selectedCase.data}
             isNew={false}
             folderName={folder?.name ?? ''}
+            folderOptions={flattenFolders(tree.data ?? [])}
+            onMove={canAuthor ? handleMove : undefined}
             saving={saving}
             onSave={handleSave}
             onDuplicate={canAuthor ? handleDuplicate : undefined}

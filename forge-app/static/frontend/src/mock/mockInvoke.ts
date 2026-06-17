@@ -281,6 +281,8 @@ class MockStore {
   deleteCase(id: string): boolean {
     const before = this.cases.length;
     this.cases = this.cases.filter((c) => c.id !== id);
+    // Mirror the backend: a deleted case is removed from any runs too.
+    this.execs = this.execs.filter((e) => e.testCaseId !== id);
     return this.cases.length < before;
   }
 

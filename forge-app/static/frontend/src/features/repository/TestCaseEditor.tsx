@@ -54,6 +54,8 @@ interface Props {
   onDelete?: () => void;
   /** Flattened folder list (id + indented label) for the "move to folder" picker. */
   folderOptions?: { id: string; label: string }[];
+  /** Folder path (root → leaf names) shown as a breadcrumb in the header. */
+  folderPath?: string[];
   /** Move the current case to another folder. */
   onMove?: (folderId: string) => void;
   /** Read-only viewers (e.g. OBSERVER) — hide the save action. */
@@ -107,6 +109,7 @@ export function TestCaseEditor({
   onDuplicate,
   onDelete,
   folderOptions,
+  folderPath,
   onMove,
   readOnly = false,
 }: Props) {
@@ -177,11 +180,20 @@ export function TestCaseEditor({
   return (
     <div className="esp-detail">
       <div className="esp-detail-head">
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div className="esp-muted" style={{ fontSize: 12, fontWeight: 700 }}>
             {isNew ? `New test case · ${folderName}` : tcId(testCase!.displayId)}
             {!isNew && testCase ? ` · v${testCase.version}` : ''}
           </div>
+          {folderPath && folderPath.length > 0 ? (
+            <div
+              className="esp-muted"
+              title={folderPath.join(' › ')}
+              style={{ fontSize: 11, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
+              📁 {folderPath.join(' › ')}
+            </div>
+          ) : null}
         </div>
         {!isNew && testCase && onMove && folderOptions && folderOptions.length > 0 ? (
           <label className="esp-muted" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>

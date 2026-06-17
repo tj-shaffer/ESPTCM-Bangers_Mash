@@ -41,6 +41,20 @@ function findFolderById(nodes: FolderNode[], id: string): FolderNode | null {
   return null;
 }
 
+/** Names from root → the folder with `id`, for a breadcrumb. Empty if not found. */
+function folderPathNames(nodes: FolderNode[], id: string): string[] {
+  const walk = (ns: FolderNode[], trail: FolderNode[]): FolderNode[] | null => {
+    for (const n of ns) {
+      const next = [...trail, n];
+      if (n.id === id) return next;
+      const hit = walk(n.children, next);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  return (walk(nodes, []) ?? []).map((f) => f.name);
+}
+
 export function RepositoryView() {
   const tree = useFolderTree();
   const [folder, setFolder] = useState<FolderNode | null>(null);
@@ -77,6 +91,10 @@ export function RepositoryView() {
   };
 
   const saving = createCase.isPending || updateCase.isPending;
+
+  const treeData = tree.data ?? [];
+  const selectedFolderPath = folder ? folderPathNames(treeData, folder.id) : [];
+  const casePath = selectedCase.data ? folderPathNames(treeData, selectedCase.data.folderId) : [];
 
   const handleSave = async (input: Omit<Parameters<typeof createCase.mutateAsync>[0], 'folderId'>) => {
     if (creatingCase) {
@@ -162,7 +180,14 @@ export function RepositoryView() {
       <div className="esp-main">
         <div className="esp-list-pane">
           <div className="esp-toolbar">
-            <h2>{folder?.name ?? 'Select a folder'}</h2>
+            <div style={{ minWidth: 0 }}>
+              {selectedFolderPath.length > 1 ? (
+                <div className="esp-muted" style={{ fontSize: 11 }} title={selectedFolderPath.join(' › ')}>
+                  {selectedFolderPath.slice(0, -1).join(' › ')} ›
+                </div>
+              ) : null}
+              <h2 style={{ margin: 0 }}>{folder?.name ?? 'Select a folder'}</h2>
+            </div>
             <div className="esp-header-spacer" />
             {canAuthor ? (
               <>
@@ -208,6 +233,7 @@ export function RepositoryView() {
             testCase={null}
             isNew
             folderName={folder.name}
+            folderPath={selectedFolderPath}
             saving={saving}
             onSave={handleSave}
             onCancelNew={() => setCreatingCase(false)}
@@ -218,6 +244,7 @@ export function RepositoryView() {
             isNew={false}
             folderName={folder?.name ?? ''}
             folderOptions={flattenFolders(tree.data ?? [])}
+            folderPath={casePath}
             onMove={canAuthor ? handleMove : undefined}
             saving={saving}
             onSave={handleSave}

@@ -7,13 +7,10 @@ import type {
   AddAttachmentInput,
   AttachmentContent,
   CreateDefectInput,
-  CreatePackageInput,
   CreateRunInput,
   DashboardData,
   DashboardFilters,
   ExecutionDetail,
-  PackageDetail,
-  PackageSummary,
   ReportRow,
   RunStage,
   SignOffInput,
@@ -27,8 +24,6 @@ const keys = {
   runs: ['runs'] as const,
   run: (id: string) => ['run', id] as const,
   exec: (id: string) => ['exec', id] as const,
-  packages: ['packages'] as const,
-  package: (id: string) => ['package', id] as const,
   dashboard: ['dashboard'] as const,
 };
 
@@ -66,7 +61,6 @@ export function useUpdateRun() {
     onSuccess: (run) => {
       qc.setQueryData(keys.run(run.id), run);
       qc.invalidateQueries({ queryKey: keys.runs });
-      qc.invalidateQueries({ queryKey: keys.packages });
     },
   });
 }
@@ -77,7 +71,6 @@ export function useDeleteRun() {
     mutationFn: (id: string) => invokeResolver<{ deleted: boolean }>('run.delete', { id }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.runs });
-      qc.invalidateQueries({ queryKey: keys.packages });
       qc.invalidateQueries({ queryKey: keys.dashboard });
     },
   });
@@ -91,7 +84,6 @@ export function useSetRunStage() {
     onSuccess: (run) => {
       qc.setQueryData(keys.run(run.id), run);
       qc.invalidateQueries({ queryKey: keys.runs });
-      qc.invalidateQueries({ queryKey: keys.packages });
     },
   });
 }
@@ -102,46 +94,6 @@ export function useSignOffRun() {
     mutationFn: (vars: { id: string } & SignOffInput) => invokeResolver<TestRunDetail>('run.signOff', { ...vars }),
     onSuccess: (run) => {
       qc.setQueryData(keys.run(run.id), run);
-      qc.invalidateQueries({ queryKey: keys.runs });
-      qc.invalidateQueries({ queryKey: keys.packages });
-    },
-  });
-}
-
-// ---------- packages ----------
-
-export function usePackages() {
-  return useQuery({
-    queryKey: keys.packages,
-    queryFn: () => invokeResolver<PackageSummary[]>('package.list'),
-  });
-}
-
-export function usePackage(id: string | null) {
-  return useQuery({
-    queryKey: keys.package(id ?? ''),
-    queryFn: () => invokeResolver<PackageDetail | null>('package.get', { id }),
-    enabled: !!id,
-  });
-}
-
-export function useCreatePackage() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: CreatePackageInput) => invokeResolver<PackageDetail>('package.create', { ...input }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: keys.packages });
-      qc.invalidateQueries({ queryKey: keys.runs });
-    },
-  });
-}
-
-export function useDeletePackage() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => invokeResolver<{ deleted: boolean }>('package.delete', { id }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: keys.packages });
       qc.invalidateQueries({ queryKey: keys.runs });
     },
   });

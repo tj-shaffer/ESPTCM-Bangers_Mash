@@ -14,9 +14,8 @@ import { RepositoryView } from './features/repository/RepositoryView';
 
 // Lazy — keeps recharts (Dashboard) out of the initial bundle; each feature
 // view loads on first navigation.
-const RunsView = lazy(() => import('./features/runs/RunsView').then((m) => ({ default: m.RunsView })));
-const PackagesView = lazy(() =>
-  import('./features/runs/PackagesView').then((m) => ({ default: m.PackagesView })),
+const PipelineView = lazy(() =>
+  import('./features/runs/PipelineView').then((m) => ({ default: m.PipelineView })),
 );
 const DashboardView = lazy(() =>
   import('./features/dashboard/DashboardView').then((m) => ({ default: m.DashboardView })),
@@ -25,18 +24,16 @@ const AdminView = lazy(() =>
   import('./features/admin/AdminView').then((m) => ({ default: m.AdminView })),
 );
 
-type View = 'repository' | 'runs' | 'review' | 'packages' | 'dashboard' | 'admin';
+type View = 'repository' | 'runs' | 'dashboard' | 'admin';
 
-const NAV: { key: View; label: string; adminOnly?: boolean; managerOnly?: boolean }[] = [
+const NAV: { key: View; label: string; adminOnly?: boolean }[] = [
   { key: 'repository', label: 'Repository' },
-  { key: 'runs', label: 'Test Runs' },
-  { key: 'review', label: 'Review Queue', managerOnly: true },
-  { key: 'packages', label: 'Packages', managerOnly: true },
+  { key: 'runs', label: 'Pipeline' },
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'admin', label: 'User Roles', adminOnly: true },
 ];
 
-const VIEWS: View[] = ['repository', 'runs', 'review', 'packages', 'dashboard', 'admin'];
+const VIEWS: View[] = ['repository', 'runs', 'dashboard', 'admin'];
 
 /** Parse the URL hash into a view + optional entity id (e.g. "#repository/<caseId>"
  *  or "#dashboard"), so tabs AND specific test cases are linkable and survive a
@@ -55,7 +52,6 @@ export function App() {
   const [route, setRoute] = useState(parseHash);
   const { view, entityId } = route;
   const isAdmin = auth.hasRole('SUPER_ADMIN');
-  const isManager = auth.hasRole('SUPER_ADMIN', 'TEST_MANAGER');
   const [showChangePw, setShowChangePw] = useState(false);
 
   // Keep the hash and the route in sync (covers nav clicks + back/forward).
@@ -77,9 +73,7 @@ export function App() {
           Bangers &amp; Mash
         </div>
         <nav className="esp-nav">
-          {NAV.filter((n) => !n.adminOnly || isAdmin)
-            .filter((n) => !n.managerOnly || isManager)
-            .map((n) => (
+          {NAV.filter((n) => !n.adminOnly || isAdmin).map((n) => (
             <button
               key={n.key}
               className={`esp-nav-item${view === n.key ? ' active' : ''}`}
@@ -118,7 +112,7 @@ export function App() {
         </div>
       ) : null}
       {showChangePw ? <ChangePasswordModal onClose={() => setShowChangePw(false)} /> : null}
-      {view === 'repository' || (view === 'admin' && !isAdmin) || (view === 'review' && !isManager) ? (
+      {view === 'repository' || (view === 'admin' && !isAdmin) ? (
         <RepositoryView deepCaseId={view === 'repository' ? entityId : null} />
       ) : (
         <Suspense
@@ -129,11 +123,7 @@ export function App() {
           }
         >
           {view === 'runs' ? (
-            <RunsView deepRunId={entityId} />
-          ) : view === 'review' ? (
-            <RunsView initialStageFilter="AWAITING_QC" heading="Review Queue" />
-          ) : view === 'packages' ? (
-            <PackagesView />
+            <PipelineView deepRunId={entityId} />
           ) : view === 'admin' ? (
             <AdminView />
           ) : (

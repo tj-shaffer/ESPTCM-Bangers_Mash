@@ -16,7 +16,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { fetchReport, useDashboard, usePackages, useRuns } from '../../api/runs';
+import { fetchReport, useDashboard, useRuns } from '../../api/runs';
 import { useFolderTree, useProjects } from '../../api/repository';
 import { EXEC_STATUS_LABEL, RUN_STAGE_LABEL, TEST_TYPES, TEST_TYPE_LABELS, tcId } from '../../domain/types';
 import type { DashboardData, DashboardFilters, ExecutionStatus, ReportRow, TestType } from '../../domain/types';
@@ -46,11 +46,11 @@ async function exportResults(d: DashboardData, rows: ReportRow[], scopeLabel: st
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), 'Summary');
 
   const header = [
-    'Test Case', 'Title', 'Run', 'Package', 'Vendors', 'Environment',
+    'Test Case', 'Title', 'Run', 'Vendors', 'Environment',
     'Result', 'Steps', 'Defects', 'Jira', 'Assignee', 'Stage', 'Updated',
   ];
   const detail = rows.map((r) => [
-    tcId(r.displayId), r.title, r.runName, r.packageName ?? '', r.vendors.join(', '), r.environment,
+    tcId(r.displayId), r.title, r.runName, r.vendors.join(', '), r.environment,
     EXEC_STATUS_LABEL[r.status], `${r.stepsDone}/${r.stepsTotal}`, r.defectCount, r.jiraKeys.join(', '),
     r.assigneeName ?? '', RUN_STAGE_LABEL[r.stage], new Date(r.updatedAt).toLocaleString(),
   ]);
@@ -81,7 +81,6 @@ const STATUS_COLOR: Record<ExecutionStatus, string> = {
 export function DashboardView({ deepRunId = null }: { deepRunId?: string | null } = {}) {
   const [projectKey, setProjectKey] = useState('');
   const [folderId, setFolderId] = useState('');
-  const [packageId, setPackageId] = useState('');
   const [runId, setRunId] = useState(deepRunId ?? '');
   const [testType, setTestType] = useState<TestType | ''>('');
   const [exporting, setExporting] = useState(false);
@@ -89,24 +88,20 @@ export function DashboardView({ deepRunId = null }: { deepRunId?: string | null 
   // Arriving from a run summary's "View in dashboard" (#dashboard/<runId>):
   // pre-select that run so the charts open already scoped to it.
   useEffect(() => {
-    if (deepRunId) {
-      setRunId(deepRunId);
-      setPackageId('');
-    }
+    if (deepRunId) setRunId(deepRunId);
   }, [deepRunId]);
 
   const filters: DashboardFilters = useMemo(
     () => ({
-      ...(runId ? { runId } : packageId ? { packageId } : {}),
+      ...(runId ? { runId } : {}),
       ...(testType ? { testType } : {}),
       ...(folderId ? { folderId } : {}),
     }),
-    [packageId, runId, testType, folderId],
+    [runId, testType, folderId],
   );
 
   const projects = useProjects();
   const appTree = useFolderTree(projectKey || undefined);
-  const packages = usePackages();
   const runs = useRuns();
   const dash = useDashboard(filters, projectKey || undefined);
 
@@ -115,10 +110,9 @@ export function DashboardView({ deepRunId = null }: { deepRunId?: string | null 
     if (projectKey) parts.push(`Project: ${projectKey}`);
     if (folderId) parts.push(`App: ${appTree.data?.find((f) => f.id === folderId)?.name ?? folderId}`);
     if (runId) parts.push(`Run: ${runs.data?.find((r) => r.id === runId)?.name ?? runId}`);
-    else if (packageId) parts.push(`Package: ${packages.data?.find((p) => p.id === packageId)?.name ?? packageId}`);
     if (testType) parts.push(`Type: ${TEST_TYPE_LABELS[testType]}`);
     return parts.length ? parts.join(' · ') : 'All runs';
-  }, [projectKey, folderId, runId, packageId, testType, appTree.data, runs.data, packages.data]);
+  }, [projectKey, folderId, runId, testType, appTree.data, runs.data]);
 
   const runExport = async () => {
     if (!dash.data) return;
@@ -169,40 +163,16 @@ export function DashboardView({ deepRunId = null }: { deepRunId?: string | null 
       <select
         className="esp-select"
         style={{ width: 'auto' }}
-        value={runId ? `run:${runId}` : packageId ? `pkg:${packageId}` : ''}
-        onChange={(e) => {
-          const v = e.target.value;
-          if (v.startsWith('run:')) {
-            setRunId(v.slice(4));
-            setPackageId('');
-          } else if (v.startsWith('pkg:')) {
-            setPackageId(v.slice(4));
-            setRunId('');
-          } else {
-            setRunId('');
-            setPackageId('');
-          }
-        }}
+        title="Filter by run"
+        value={runId}
+        onChange={(e) => setRunId(e.target.value)}
       >
-        <option value="">All runs &amp; packages</option>
-        {(packages.data ?? []).length > 0 ? (
-          <optgroup label="Packages">
-            {(packages.data ?? []).map((p) => (
-              <option key={p.id} value={`pkg:${p.id}`}>
-                📦 {p.name}
-              </option>
-            ))}
-          </optgroup>
-        ) : null}
-        {(runs.data ?? []).length > 0 ? (
-          <optgroup label="Runs">
-            {(runs.data ?? []).map((r) => (
-              <option key={r.id} value={`run:${r.id}`}>
-                {r.name}
-              </option>
-            ))}
-          </optgroup>
-        ) : null}
+        <option value="">All runs</option>
+        {(runs.data ?? []).map((r) => (
+          <option key={r.id} value={r.id}>
+            {r.name}
+          </option>
+        ))}
       </select>
       <select
         className="esp-select"

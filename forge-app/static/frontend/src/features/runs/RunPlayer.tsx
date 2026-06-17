@@ -180,7 +180,7 @@ function RunPlayerInner({
           <Spinner size="medium" />
         </div>
       ) : (
-        <ExecutionBody data={exec.data} runId={runId} />
+        <ExecutionBody data={exec.data} runId={runId} onCompleteNext={completeAndAdvance} />
       )}
     </Modal>
   );

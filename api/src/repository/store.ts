@@ -76,6 +76,7 @@ export interface TestCaseStore {
   createPackage(input: CreatePackageInput, ownerAccountId: string, projectKey?: string): Promise<PackageDetail>;
   getPackage(id: string): Promise<PackageDetail | null>;
   deletePackage(id: string): Promise<boolean>;
+  signOffPackage(id: string, input: SignOffInput): Promise<PackageDetail | null>;
   getExecution(id: string): Promise<ExecutionDetail | null>;
   getStepResultGate(stepResultId: string): Promise<StepResultGate | null>;
   setStepResult(executionId: string, stepResultId: string, patch: StepResultPatch): Promise<ExecutionDetail | null>;

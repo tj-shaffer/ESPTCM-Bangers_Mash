@@ -5,9 +5,9 @@
 import { useMemo, useState } from 'react';
 import Spinner from '@atlaskit/spinner';
 import { Modal } from '../../components/ui';
-import { useCompleteExecution, useExecution, useRun, useSetRunStage } from '../../api/runs';
+import { useCompleteExecution, useExecution, useRun, useSetRunStage, useUpdateRun } from '../../api/runs';
 import { useAuth } from '../../context/AuthContext';
-import { EXEC_STATUS_LABEL, tcId } from '../../domain/types';
+import { EXEC_STATUS_LABEL, TEAM_MEMBERS, tcId } from '../../domain/types';
 import type { ExecutionStatus, RunExecutionSummary } from '../../domain/types';
 import { ExecBadge, ExecutionBody } from './ExecutionRunner';
 
@@ -154,6 +154,8 @@ function RunPlayerInner({
           <span className="esp-muted" style={{ fontSize: 12 }}>
             {counts.PASS} passed · {counts.FAIL} failed · {counts.BLOCKED} blocked · {counts.remaining} remaining
           </span>
+          <div className="esp-header-spacer" />
+          <AssigneeControl runId={detail.id} assigneeName={detail.assigneeName ?? ''} />
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {executions.map((e, i) => (
@@ -278,6 +280,46 @@ function RunSummary({
         ))}
       </div>
     </Modal>
+  );
+}
+
+/** Inline assignee editor in the runner header — "this is Dave's run" (#5).
+ *  Editable for run-managers (run.update); read-only otherwise. */
+function AssigneeControl({ runId, assigneeName }: { runId: string; assigneeName: string }) {
+  const auth = useAuth();
+  const update = useUpdateRun();
+  const [val, setVal] = useState(assigneeName);
+
+  if (!auth.can('run.update')) {
+    return assigneeName ? <span className="esp-muted" style={{ fontSize: 12 }}>👤 {assigneeName}</span> : null;
+  }
+
+  const save = () => {
+    const v = val.trim();
+    if (v !== (assigneeName ?? '')) update.mutate({ id: runId, patch: { assigneeName: v || null } });
+  };
+
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span className="esp-muted" style={{ fontSize: 12 }}>👤</span>
+      <input
+        className="esp-input"
+        list="esp-team-members-player"
+        style={{ width: 150, padding: '4px 8px', fontSize: 12 }}
+        placeholder="Assign…"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        }}
+      />
+      <datalist id="esp-team-members-player">
+        {TEAM_MEMBERS.map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
+    </span>
   );
 }
 

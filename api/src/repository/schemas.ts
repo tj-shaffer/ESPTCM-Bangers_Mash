@@ -159,6 +159,12 @@ export const schemas = {
     runIds: z.array(z.string()).optional(),
   }),
   'package.delete': z.object({ id: req('Package id is required') }),
+  'package.signOff': z.object({
+    id: req('Package id is required'),
+    decision: signOffDecision,
+    approverName: req('Approver name is required'),
+    note: z.string().optional(),
+  }),
 
   // execution steps / attachments / defects
   'exec.setStep': z.object({

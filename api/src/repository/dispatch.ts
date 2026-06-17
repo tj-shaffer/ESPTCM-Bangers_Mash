@@ -157,6 +157,28 @@ export async function dispatch(
     case 'package.delete':
       return { deleted: await store.deletePackage(parse(key, payload).id) };
 
+    case 'package.signOff': {
+      // Package-level in-app approval (manager-gated). A package can be signed
+      // off once at least one member run is QC'd to READY_FOR_APPROVAL. See
+      // ENHANCEMENTS #11.
+      const { id, decision, approverName, note } = parse(key, payload);
+      const pkg = await store.getPackage(id);
+      if (!pkg) throw new DispatchError('Package not found', 404);
+      if (!pkg.runs.some((r) => r.stage === 'READY_FOR_APPROVAL')) {
+        throw new DispatchError('No runs in this package are ready for approval.', 400);
+      }
+      const signedOff = await store.signOffPackage(id, { decision, approverName, note });
+      await recordAudit({
+        actorAccountId: accountId,
+        action: 'package.signOff',
+        entityType: auditEntityType('package.signOff'),
+        entityId: id,
+        before: { approvedAt: pkg.approvedAt ?? null },
+        after: { decision, approverName },
+      });
+      return signedOff;
+    }
+
     case 'exec.get':
       return store.getExecution(parse(key, payload).id);
 

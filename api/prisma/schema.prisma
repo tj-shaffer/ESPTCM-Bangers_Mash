@@ -315,6 +315,10 @@ model Package {
   status         ExecutionStatus @default(NOT_STARTED)
   ownerAccountId String
   projectKey     String
+  // Package-level sign-off (identity-light, mirrors TestCycle). "Approved" = approvedAt != null.
+  approverName   String?
+  approvalNote   String?
+  approvedAt     DateTime?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 

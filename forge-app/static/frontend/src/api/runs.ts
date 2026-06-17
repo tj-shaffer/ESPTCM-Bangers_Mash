@@ -7,10 +7,13 @@ import type {
   AddAttachmentInput,
   AttachmentContent,
   CreateDefectInput,
+  CreatePackageInput,
   CreateRunInput,
   DashboardData,
   DashboardFilters,
   ExecutionDetail,
+  PackageDetail,
+  PackageSummary,
   ReportRow,
   RunStage,
   SignOffInput,
@@ -24,6 +27,8 @@ const keys = {
   runs: ['runs'] as const,
   run: (id: string) => ['run', id] as const,
   exec: (id: string) => ['exec', id] as const,
+  packages: ['packages'] as const,
+  package: (id: string) => ['package', id] as const,
   dashboard: ['dashboard'] as const,
 };
 
@@ -95,6 +100,47 @@ export function useSignOffRun() {
     onSuccess: (run) => {
       qc.setQueryData(keys.run(run.id), run);
       qc.invalidateQueries({ queryKey: keys.runs });
+    },
+  });
+}
+
+// ---------- packages (group runs for end-to-end review + sign-off) ----------
+
+export function usePackages() {
+  return useQuery({
+    queryKey: keys.packages,
+    queryFn: () => invokeResolver<PackageSummary[]>('package.list'),
+  });
+}
+
+export function usePackage(id: string | null) {
+  return useQuery({
+    queryKey: keys.package(id ?? ''),
+    queryFn: () => invokeResolver<PackageDetail | null>('package.get', { id }),
+    enabled: !!id,
+  });
+}
+
+export function useCreatePackage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreatePackageInput) => invokeResolver<PackageDetail>('package.create', { ...input }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.packages });
+      qc.invalidateQueries({ queryKey: keys.runs }); // membership moves runs
+    },
+  });
+}
+
+export function useSignOffPackage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string } & SignOffInput) => invokeResolver<PackageDetail>('package.signOff', { ...vars }),
+    onSuccess: (pkg) => {
+      qc.setQueryData(keys.package(pkg.id), pkg);
+      qc.invalidateQueries({ queryKey: keys.packages });
+      qc.invalidateQueries({ queryKey: keys.runs }); // member runs change stage
+      qc.invalidateQueries({ queryKey: keys.dashboard });
     },
   });
 }

@@ -29,6 +29,7 @@ export const WRITE_KEYS: ReadonlySet<string> = new Set([
   'run.delete',
   'package.create',
   'package.delete',
+  'package.signOff',
   'exec.setStep',
   'exec.addAttachment',
   'exec.deleteAttachment',
@@ -47,7 +48,12 @@ export const WRITE_KEYS: ReadonlySet<string> = new Set([
  * Keys that write their own richer before/after entry inside dispatch. The
  * route skips its baseline entry for these so each action logs exactly once.
  */
-export const SELF_AUDITED: ReadonlySet<string> = new Set(['admin.setRole', 'admin.deleteUser', 'run.signOff']);
+export const SELF_AUDITED: ReadonlySet<string> = new Set([
+  'admin.setRole',
+  'admin.deleteUser',
+  'run.signOff',
+  'package.signOff',
+]);
 
 /** Entity type from an invoke key, e.g. "run.setStage" -> "run". */
 export function auditEntityType(key: string): string {

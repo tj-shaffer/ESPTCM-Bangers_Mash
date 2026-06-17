@@ -1,11 +1,14 @@
 # API CI + (dormant) Azure deploy.
 #
+# This is an npm *workspaces* monorepo — the lockfile lives at the repo root, so
+# install happens at the root and api scripts run via `--workspace api`.
+#
 # CI (typecheck → test → build) runs on every push/PR touching api/**.
 # The Azure App Service deploy is DORMANT — the live pilot deploys on Vercel via
 # its Git integration, not this workflow. The deploy job only runs on a manual
-# `workflow_dispatch`, so normal pushes get tested without attempting (and
-# failing) an Azure deploy. Re-activate for the Azure production migration —
-# see docs/AZURE-AD-MIGRATION.md.
+# `workflow_dispatch`, so normal pushes get tested without attempting an Azure
+# deploy. Re-activate (and make packaging workspace-aware) for the Azure
+# production migration — see docs/AZURE-AD-MIGRATION.md.
 name: api-ci
 
 on:
@@ -22,9 +25,6 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: api
     steps:
       - uses: actions/checkout@v4
 
@@ -32,31 +32,30 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: api/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install
+      - name: Install (workspaces, from root)
         run: npm ci
 
       - name: Generate Prisma client
-        run: npx prisma generate
+        run: npm run db:generate --workspace api
 
       - name: Typecheck
-        run: npm run typecheck
+        run: npm run typecheck --workspace api
 
       - name: Test
-        run: npm test
+        run: npm test --workspace api
 
       - name: Build
-        run: npm run build
+        run: npm run build --workspace api
 
   deploy-azure:
-    # Dormant: manual-only. The live pilot deploys on Vercel, not here.
+    # Dormant: manual-only. The live pilot deploys on Vercel, not here. NOTE: the
+    # packaging step below predates the workspaces layout and needs rework (deps
+    # hoist to the root node_modules) before this job is used for a real deploy.
     needs: ci
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: api
     steps:
       - uses: actions/checkout@v4
 
@@ -64,19 +63,16 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: api/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install
+      - name: Install (workspaces, from root)
         run: npm ci
 
       - name: Generate Prisma client
-        run: npx prisma generate
+        run: npm run db:generate --workspace api
 
       - name: Build
-        run: npm run build
-
-      - name: Prune dev deps for deploy
-        run: npm prune --omit=dev
+        run: npm run build --workspace api
 
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3

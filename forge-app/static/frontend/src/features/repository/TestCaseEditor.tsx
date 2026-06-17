@@ -52,6 +52,10 @@ interface Props {
   onCancelNew?: () => void;
   onDuplicate?: () => void;
   onDelete?: () => void;
+  /** Flattened folder list (id + indented label) for the "move to folder" picker. */
+  folderOptions?: { id: string; label: string }[];
+  /** Move the current case to another folder. */
+  onMove?: (folderId: string) => void;
   /** Read-only viewers (e.g. OBSERVER) — hide the save action. */
   readOnly?: boolean;
 }
@@ -102,6 +106,8 @@ export function TestCaseEditor({
   onCancelNew,
   onDuplicate,
   onDelete,
+  folderOptions,
+  onMove,
   readOnly = false,
 }: Props) {
   const [form, setForm] = useState<FormState>(() => toForm(testCase));
@@ -177,6 +183,27 @@ export function TestCaseEditor({
             {!isNew && testCase ? ` · v${testCase.version}` : ''}
           </div>
         </div>
+        {!isNew && testCase && onMove && folderOptions && folderOptions.length > 0 ? (
+          <label className="esp-muted" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            📁 Folder
+            <select
+              className="esp-select"
+              style={{ width: 'auto' }}
+              title="Move this test case to another folder"
+              value={testCase.folderId}
+              disabled={saving}
+              onChange={(e) => {
+                if (e.target.value !== testCase.folderId) onMove(e.target.value);
+              }}
+            >
+              {folderOptions.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         {!isNew && onDuplicate ? (
           <button className="esp-btn esp-btn-ghost" onClick={onDuplicate} disabled={saving}>
             ⧉ Duplicate

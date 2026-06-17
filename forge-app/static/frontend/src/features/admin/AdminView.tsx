@@ -47,6 +47,23 @@ export function AdminView() {
         with the temporary password you set and are prompted to change it.
       </p>
 
+      {auth.isSuperAdmin ? (
+        <div className="esp-card" style={{ marginBottom: 16 }}>
+          <h3 style={{ marginTop: 0 }}>Preview the app as another role</h3>
+          <p className="esp-muted" style={{ fontSize: 13, marginTop: 4 }}>
+            See exactly what each role can do. You’ll switch into their view — use the “Exit” button in the banner at
+            the top to return to your own.
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+            {ROLES.filter((r) => r !== 'SUPER_ADMIN').map((r) => (
+              <button key={r} className="esp-btn esp-btn-secondary" onClick={() => auth.setViewAsRole(r)}>
+                View as {ROLE_LABELS[r]}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <AddUserForm onCreated={(name) => setNotice(`Created ${name}.`)} />
 
       {notice ? (

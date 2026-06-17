@@ -233,13 +233,14 @@ export function RepositoryView() {
 
       {showNewFolder ? (
         <NewFolderModal
-          parent={folder}
+          tree={tree.data ?? []}
+          defaultParentId={folder?.id ?? null}
           busy={createFolder.isPending}
           onClose={() => setShowNewFolder(false)}
-          onCreate={async (name) => {
-            await createFolder.mutateAsync({ name, parentId: folder?.id ?? null });
+          onCreate={async (name, parentId) => {
+            await createFolder.mutateAsync({ name, parentId });
             setShowNewFolder(false);
-            flashToast('Folder created');
+            flashToast(parentId ? 'Folder created' : 'Top-level folder created');
           }}
         />
       ) : null}
@@ -249,19 +250,36 @@ export function RepositoryView() {
   );
 }
 
+/** Flatten the folder tree to {id, label} rows with indentation, for a <select>. */
+function flattenFolders(nodes: FolderNode[], depth = 0): { id: string; label: string }[] {
+  const out: { id: string; label: string }[] = [];
+  for (const n of nodes) {
+    out.push({ id: n.id, label: `${'  '.repeat(depth)}${n.name}` });
+    out.push(...flattenFolders(n.children, depth + 1));
+  }
+  return out;
+}
+
 function NewFolderModal({
-  parent,
+  tree,
+  defaultParentId,
   busy,
   onClose,
   onCreate,
 }: {
-  parent: FolderNode | null;
+  tree: FolderNode[];
+  defaultParentId: string | null;
   busy: boolean;
   onClose: () => void;
-  onCreate: (name: string) => void;
+  onCreate: (name: string, parentId: string | null) => void;
 }) {
   const [name, setName] = useState('');
-  const parentLabel = useMemo(() => (parent ? `inside "${parent.name}"` : 'at the top level'), [parent]);
+  // Default to the selected folder so the common "subfolder" case is one click,
+  // but "— Top level —" is always available so a root folder can be created.
+  const [parentId, setParentId] = useState<string>(defaultParentId ?? '');
+  const options = useMemo(() => flattenFolders(tree), [tree]);
+  const submit = () => onCreate(name, parentId || null);
+
   return (
     <Modal
       title="New folder"
@@ -272,23 +290,36 @@ function NewFolderModal({
           <button className="esp-btn esp-btn-secondary" onClick={onClose} disabled={busy}>
             Cancel
           </button>
-          <button className="esp-btn esp-btn-primary" onClick={() => onCreate(name)} disabled={busy || !name.trim()}>
+          <button className="esp-btn esp-btn-primary" onClick={submit} disabled={busy || !name.trim()}>
             {busy ? 'Creating…' : 'Create folder'}
           </button>
         </>
       }
     >
-      <p className="esp-muted" style={{ marginTop: 0, fontSize: 13 }}>Creating {parentLabel}.</p>
-      <input
-        className="esp-input"
-        autoFocus
-        placeholder="Folder name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && name.trim()) onCreate(name);
-        }}
-      />
+      <div className="esp-field">
+        <label className="esp-label">Parent</label>
+        <select className="esp-select" value={parentId} onChange={(e) => setParentId(e.target.value)}>
+          <option value="">— Top level —</option>
+          {options.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="esp-field" style={{ marginBottom: 0 }}>
+        <label className="esp-label">Folder name</label>
+        <input
+          className="esp-input"
+          autoFocus
+          placeholder="Folder name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && name.trim()) submit();
+          }}
+        />
+      </div>
     </Modal>
   );
 }

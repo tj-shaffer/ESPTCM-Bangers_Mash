@@ -83,7 +83,12 @@ const caseFields = {
 };
 
 const dashboardFilters = z
-  .object({ packageId: z.string().optional(), runId: z.string().optional(), testType: testType.optional() })
+  .object({
+    packageId: z.string().optional(),
+    runId: z.string().optional(),
+    testType: testType.optional(),
+    folderId: z.string().optional(),
+  })
   .optional();
 
 // ---------- per-key schemas ----------

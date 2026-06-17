@@ -255,15 +255,15 @@ export function useLinkDefectJiraManual(runId: string) {
   });
 }
 
-export function useDashboard(filters: DashboardFilters = {}) {
+export function useDashboard(filters: DashboardFilters = {}, projectKey?: string) {
   return useQuery({
-    queryKey: [...keys.dashboard, filters],
-    queryFn: () => invokeResolver<DashboardData>('report.dashboard', { filters }),
+    queryKey: [...keys.dashboard, projectKey ?? 'all', filters],
+    queryFn: () => invokeResolver<DashboardData>('report.dashboard', { projectKey, filters }),
     placeholderData: keepPreviousData,
   });
 }
 
 /** Fetch the per-execution detail rows for the current filter scope (for export). */
-export function fetchReport(filters: DashboardFilters = {}): Promise<ReportRow[]> {
-  return invokeResolver<ReportRow[]>('report.export', { filters });
+export function fetchReport(filters: DashboardFilters = {}, projectKey?: string): Promise<ReportRow[]> {
+  return invokeResolver<ReportRow[]>('report.export', { projectKey, filters });
 }

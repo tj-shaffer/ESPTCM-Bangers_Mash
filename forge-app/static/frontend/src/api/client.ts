@@ -54,6 +54,13 @@ export function setUnauthorizedHandler(fn: (() => void) | null): void {
   onUnauthorized = fn;
 }
 
+// Super-admin "view as" — sent as a header so the server gates as that role
+// (downgrade-only; the backend honors it only when the real role is SUPER_ADMIN).
+let clientViewAs: string | null = null;
+export function setClientViewAs(role: string | null): void {
+  clientViewAs = role;
+}
+
 export class UnauthorizedError extends Error {
   constructor() {
     super('Unauthorized');
@@ -87,6 +94,7 @@ async function httpInvoke<T>(key: string, payload: Record<string, unknown>): Pro
     headers: {
       'content-type': 'application/json',
       ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(clientViewAs ? { 'x-testforge-view-as': clientViewAs } : {}),
     },
     body: JSON.stringify({ key, payload }),
   });

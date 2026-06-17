@@ -352,6 +352,8 @@ export interface DashboardFilters {
   packageId?: string;
   runId?: string;
   testType?: TestType;
+  /** Scope to a top-level application folder (and its descendants). */
+  folderId?: string;
 }
 
 /** One per-execution detail row for the exported results artifact. */

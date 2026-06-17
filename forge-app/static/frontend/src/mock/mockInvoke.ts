@@ -683,6 +683,28 @@ class MockStore {
 
   // ---------- dashboard / report ----------
 
+  /** A folder id plus all of its descendants (for the application filter). */
+  private descendantFolderIds(folderId: string): string[] {
+    const childMap = new Map<string, string[]>();
+    for (const f of this.folders) {
+      if (f.parentId) {
+        const kids = childMap.get(f.parentId) ?? [];
+        kids.push(f.id);
+        childMap.set(f.parentId, kids);
+      }
+    }
+    const out = [folderId];
+    const stack = [folderId];
+    while (stack.length) {
+      const cur = stack.pop() as string;
+      for (const child of childMap.get(cur) ?? []) {
+        out.push(child);
+        stack.push(child);
+      }
+    }
+    return out;
+  }
+
   private scopedExecs(filters: DashboardFilters): MockExecution[] {
     let runs = this.runs;
     if (filters.packageId) runs = runs.filter((r) => r.packageId === filters.packageId);
@@ -693,7 +715,17 @@ class MockStore {
       const ok = new Set(this.cases.filter((c) => c.testType === filters.testType).map((c) => c.id));
       execs = execs.filter((e) => ok.has(e.testCaseId));
     }
+    if (filters.folderId) {
+      const folderIds = new Set(this.descendantFolderIds(filters.folderId));
+      const ok = new Set(this.cases.filter((c) => folderIds.has(c.folderId)).map((c) => c.id));
+      execs = execs.filter((e) => ok.has(e.testCaseId));
+    }
     return execs;
+  }
+
+  /** Distinct project keys — single-project ('DS') in the mock. */
+  projects(): string[] {
+    return [...new Set(this.folders.map((f) => f.projectKey))].sort();
   }
 
   getDashboard(filters: DashboardFilters = {}): DashboardData {
@@ -1082,6 +1114,8 @@ export async function mockInvoke<T>(key: string, payload: Record<string, unknown
       return { configured: false, ok: false, status: 0, projectKey: 'DS', projectFound: false, issueTypes: [], issueTypeExists: false, requiredFields: [], message: 'Jira is not configured in the preview.' } as T;
 
     // reporting
+    case 'meta.projects':
+      return store.projects() as T;
     case 'report.dashboard':
       return store.getDashboard((p.filters ?? {}) as DashboardFilters) as T;
     case 'report.export':

@@ -239,6 +239,17 @@ export async function dispatch(
       return res;
     }
 
+    case 'meta.projects': {
+      // Distinct Jira project keys across folders, plans, and packages — powers
+      // the dashboard's project filter.
+      const [folders, plans, packages] = await Promise.all([
+        prisma.testFolder.findMany({ distinct: ['projectKey'], select: { projectKey: true } }),
+        prisma.testPlan.findMany({ distinct: ['projectKey'], select: { projectKey: true } }),
+        prisma.package.findMany({ distinct: ['projectKey'], select: { projectKey: true } }),
+      ]);
+      return [...new Set([...folders, ...plans, ...packages].map((r) => r.projectKey))].sort();
+    }
+
     case 'report.dashboard': {
       const { projectKey, filters } = parse(key, payload);
       return store.getDashboard(projectKey, filters ?? {});

@@ -58,7 +58,6 @@ export function ExecutionRunner({
   onClose: () => void;
 }) {
   const exec = useExecution(executionId);
-  const setStep = useSetStepResult(runId);
   const complete = useCompleteExecution(runId);
 
   const data = exec.data;
@@ -92,86 +91,225 @@ export function ExecutionRunner({
           <Spinner size="medium" />
         </div>
       ) : (
-        <>
-          <div style={{ marginBottom: 14 }}>
-            <div className="esp-muted" style={{ fontSize: 12, fontWeight: 700 }}>
-              {tcId(data.testCaseDisplayId)} · {data.environment}
-            </div>
-            <h3 style={{ fontSize: 16, margin: '2px 0 6px' }}>{data.title}</h3>
-            {data.objective ? <p className="esp-muted" style={{ margin: 0, fontSize: 13 }}>{data.objective}</p> : null}
-            {data.preconditions ? (
-              <p style={{ margin: '8px 0 0', fontSize: 13 }}>
-                <strong>Preconditions: </strong>
-                {data.preconditions}
-              </p>
-            ) : null}
-          </div>
-
-          {data.steps.map((s) => {
-            const gated = s.screenshotRequired && s.attachments.length === 0;
-            return (
-              <div className="esp-rstep" key={s.id}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <span className="esp-step-num">{s.order}</span>
-                  <ExecBadge status={s.status} />
-                  {s.screenshotRequired ? (
-                    <span className="esp-badge esp-badge-soft" title="A screenshot is required to mark this step">
-                      📎 Screenshot required
-                    </span>
-                  ) : null}
-                </div>
-                <div style={{ fontSize: 14, marginBottom: 4 }}>{s.action}</div>
-                {s.testData ? (
-                  <div className="esp-muted" style={{ fontSize: 12, marginBottom: 4 }}>
-                    Data: {s.testData}
-                  </div>
-                ) : null}
-                <div style={{ fontSize: 13, marginBottom: 4 }}>
-                  <strong>Expected: </strong>
-                  {s.expectedResult}
-                </div>
-
-                <StepAttachments
-                  stepResultId={s.id}
-                  attachments={s.attachments}
-                  runId={runId}
-                />
-
-                <div className="esp-rstep-actions">
-                  {STEP_STATUSES.map((st) => (
-                    <button
-                      key={st}
-                      className={`esp-vbtn${s.status === st ? ` on-${st}` : ''}`}
-                      disabled={gated}
-                      title={gated ? 'Attach a screenshot first' : undefined}
-                      onClick={() =>
-                        setStep.mutate({ executionId, stepResultId: s.id, patch: { status: st } })
-                      }
-                    >
-                      {EXEC_STATUS_LABEL[st]}
-                    </button>
-                  ))}
-                </div>
-                {gated ? (
-                  <p className="esp-muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
-                    📎 Attach a screenshot above to mark this step.
-                  </p>
-                ) : null}
-
-                <ActualResult
-                  initial={s.actualResult ?? ''}
-                  onSave={(actualResult) =>
-                    setStep.mutate({ executionId, stepResultId: s.id, patch: { actualResult } })
-                  }
-                />
-              </div>
-            );
-          })}
-
-          <DefectsPanel exec={data} runId={runId} />
-        </>
+        <ExecutionBody data={data} runId={runId} />
       )}
     </Modal>
+  );
+}
+
+/** Presentational execution detail — case header, per-step marking, attachments,
+ *  and defects. Hosted by the single-case modal (ExecutionRunner) and the
+ *  continuous RunPlayer; the host owns data fetching and the complete/navigate
+ *  controls. */
+export function ExecutionBody({ data, runId }: { data: ExecutionDetail; runId: string }) {
+  const setStep = useSetStepResult(runId);
+  const steps = data.steps;
+
+  const isGated = (s: ExecutionDetail['steps'][number]) => s.screenshotRequired && s.attachments.length === 0;
+
+  const passAllRemaining = () => {
+    for (const s of steps) {
+      if (s.status === 'NOT_STARTED' && !isGated(s)) {
+        setStep.mutate({ executionId: data.id, stepResultId: s.id, patch: { status: 'PASS' } });
+      }
+    }
+  };
+
+  return (
+    <>
+      <div style={{ marginBottom: 14 }}>
+        <div className="esp-muted" style={{ fontSize: 12, fontWeight: 700 }}>
+          {tcId(data.testCaseDisplayId)} · {data.environment}
+        </div>
+        <h3 style={{ fontSize: 16, margin: '2px 0 6px' }}>{data.title}</h3>
+        {data.objective ? <p className="esp-muted" style={{ margin: 0, fontSize: 13 }}>{data.objective}</p> : null}
+        {data.preconditions ? (
+          <p style={{ margin: '8px 0 0', fontSize: 13 }}>
+            <strong>Preconditions: </strong>
+            {data.preconditions}
+          </p>
+        ) : null}
+      </div>
+
+      {steps.length === 0 ? (
+        <p className="esp-muted" style={{ fontSize: 13 }}>
+          This case has no steps. Mark its overall status with “Complete &amp; next”.
+        </p>
+      ) : (
+        <div style={{ marginBottom: 10 }}>
+          <button className="esp-btn esp-btn-secondary" onClick={passAllRemaining}>
+            ✓ Pass all remaining
+          </button>
+        </div>
+      )}
+
+      {steps.map((s) => {
+        const gated = isGated(s);
+        return (
+          <div className="esp-rstep" key={s.id}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <span className="esp-step-num">{s.order}</span>
+              <ExecBadge status={s.status} />
+              {s.screenshotRequired ? (
+                <span className="esp-badge esp-badge-soft" title="A screenshot is required to mark this step">
+                  📎 Screenshot required
+                </span>
+              ) : null}
+            </div>
+            <div style={{ fontSize: 14, marginBottom: 4 }}>{s.action}</div>
+            {s.testData ? (
+              <div className="esp-muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                Data: {s.testData}
+              </div>
+            ) : null}
+            <div style={{ fontSize: 13, marginBottom: 4 }}>
+              <strong>Expected: </strong>
+              {s.expectedResult}
+            </div>
+
+            <div className="esp-rstep-actions">
+              {STEP_STATUSES.map((st) => (
+                <button
+                  key={st}
+                  className={`esp-vbtn${s.status === st ? ` on-${st}` : ''}`}
+                  disabled={gated}
+                  title={gated ? 'Attach a screenshot first' : undefined}
+                  onClick={() =>
+                    setStep.mutate({ executionId: data.id, stepResultId: s.id, patch: { status: st } })
+                  }
+                >
+                  {EXEC_STATUS_LABEL[st]}
+                </button>
+              ))}
+            </div>
+            {gated ? (
+              <p className="esp-muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+                📎 Attach a screenshot below to mark this step.
+              </p>
+            ) : null}
+
+            <ActualResult
+              initial={s.actualResult ?? ''}
+              onSave={(actualResult) =>
+                setStep.mutate({ executionId: data.id, stepResultId: s.id, patch: { actualResult } })
+              }
+            />
+
+            <StepAttachments
+              stepResultId={s.id}
+              attachments={s.attachments}
+              runId={runId}
+            />
+
+            {s.status === 'FAIL' ? (
+              <InlineDefect
+                executionId={data.id}
+                runId={runId}
+                stepLabel={`${tcId(data.testCaseDisplayId)} · Step ${s.order}`}
+                expectedResult={s.expectedResult}
+                actualResult={s.actualResult ?? ''}
+              />
+            ) : null}
+          </div>
+        );
+      })}
+
+      <DefectsPanel exec={data} runId={runId} />
+    </>
+  );
+}
+
+/** Quick defect capture surfaced right under a failed step, pre-filled from the
+ *  step's expected/actual. Creates the same execution-level defect as the panel
+ *  below (defects aren't step-scoped in the data model) — this just removes the
+ *  scroll-and-retype when a failure is fresh. */
+function InlineDefect({
+  executionId,
+  runId,
+  stepLabel,
+  expectedResult,
+  actualResult,
+}: {
+  executionId: string;
+  runId: string;
+  stepLabel: string;
+  expectedResult: string;
+  actualResult: string;
+}) {
+  const createDefect = useCreateDefect(runId);
+  const [open, setOpen] = useState(false);
+  const [logged, setLogged] = useState(false);
+  const [summary, setSummary] = useState(`${stepLabel} failed`);
+  const [severity, setSeverity] = useState<Priority>('HIGH');
+  const [description, setDescription] = useState(
+    `Expected: ${expectedResult}\nActual: ${actualResult}`.trim(),
+  );
+
+  if (logged && !open) {
+    return (
+      <p className="esp-muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
+        ✓ Defect logged.{' '}
+        <button className="esp-link-btn" style={{ background: 'none', border: 'none', padding: 0, color: 'var(--esp-orange-strong)', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setOpen(true)}>
+          Log another
+        </button>
+      </p>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button className="esp-btn esp-btn-secondary" style={{ marginTop: 8 }} onClick={() => setOpen(true)}>
+        ⚠ Log defect for this step
+      </button>
+    );
+  }
+
+  const submit = () => {
+    if (!summary.trim()) return;
+    createDefect.mutate(
+      { executionId, input: { summary, severity, description: description.trim() || undefined } },
+      {
+        onSuccess: () => {
+          setOpen(false);
+          setLogged(true);
+        },
+      },
+    );
+  };
+
+  return (
+    <div className="esp-rstep" style={{ marginTop: 8, background: 'var(--esp-powder-soft)' }}>
+      <div className="esp-grid-2" style={{ marginBottom: 8 }}>
+        <input
+          className="esp-input"
+          autoFocus
+          placeholder="Defect summary"
+          value={summary}
+          onChange={(e) => setSummary(e.target.value)}
+        />
+        <select className="esp-select" value={severity} onChange={(e) => setSeverity(e.target.value as Priority)}>
+          {PRIORITIES.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+      </div>
+      <textarea
+        className="esp-textarea"
+        style={{ minHeight: 44, marginBottom: 8 }}
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+      />
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="esp-btn esp-btn-primary" onClick={submit} disabled={!summary.trim() || createDefect.isPending}>
+          {createDefect.isPending ? 'Saving…' : 'Save defect'}
+        </button>
+        <button className="esp-btn esp-btn-secondary" onClick={() => setOpen(false)} disabled={createDefect.isPending}>
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -399,7 +537,13 @@ function StepAttachments({
   return (
     <div style={{ margin: '8px 0' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <button className="esp-btn esp-btn-secondary" onClick={() => fileRef.current?.click()} disabled={addAtt.isPending}>
+        <button
+          type="button"
+          className="esp-link-btn"
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--esp-blue-strong)', textDecoration: 'underline', fontSize: 13 }}
+          onClick={() => fileRef.current?.click()}
+          disabled={addAtt.isPending}
+        >
           {addAtt.isPending ? 'Uploading…' : '📎 Attach screenshot'}
         </button>
         <input

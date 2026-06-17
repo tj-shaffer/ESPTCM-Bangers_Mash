@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Spinner from '@atlaskit/spinner';
-import type { FolderNode, TestCaseStatus } from '../../domain/types';
+import type { Environment, FolderNode, TestCaseStatus, TestCaseSummary } from '../../domain/types';
+import { ENVIRONMENTS } from '../../domain/types';
 import {
   useCase,
   useCases,
@@ -14,6 +15,7 @@ import {
   useFolderTree,
   useUpdateCase,
 } from '../../api/repository';
+import { useCreateRun } from '../../api/runs';
 import { FolderTree } from './FolderTree';
 import { TestCaseList } from './TestCaseList';
 import { TestCaseEditor } from './TestCaseEditor';
@@ -64,9 +66,15 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [folderQuery, setFolderQuery] = useState('');
   const [toast, setToast] = useState<string | null>(null);
+  const [runModal, setRunModal] = useState<{
+    candidates: TestCaseSummary[];
+    defaultName: string;
+    mode: 'folder' | 'selected';
+  } | null>(null);
 
   const auth = useAuth();
   const canAuthor = auth.can('repo.createCase');
+  const canRun = auth.can('run.create');
 
   const cases = useCases(folder?.id);
   const selectedCase = useCase(creatingCase ? null : selectedCaseId);
@@ -138,6 +146,14 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
     }
   };
 
+  // Save the new case but stay in create mode with a blank form (the editor
+  // resets itself), so a folder can be built out without the create→reselect cycle.
+  const handleSaveAndNew = async (input: Omit<Parameters<typeof createCase.mutateAsync>[0], 'folderId'>) => {
+    if (!folder) return;
+    const created = await createCase.mutateAsync({ ...input, folderId: folder.id });
+    flashToast(`Created TC-${created.displayId} — add another`);
+  };
+
   const handleDuplicate = async () => {
     if (!selectedCaseId) return;
     const copy = await duplicateCase.mutateAsync(selectedCaseId);
@@ -199,6 +215,22 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
     flashToast(`Set ${ids.length} case${ids.length === 1 ? '' : 's'} to ${status}`);
   };
 
+  // ---- Run handoff: launch a run straight from the repository, cases pre-loaded.
+  const folderCases = cases.data ?? [];
+  const runnableCount = folderCases.filter((c) => c.status === 'ACTIVE').length;
+  const defaultRunName = () => `${folder?.name ?? 'Run'} — ${new Date().toLocaleDateString()}`;
+  const openRunFolder = () =>
+    setRunModal({ candidates: folderCases, defaultName: defaultRunName(), mode: 'folder' });
+  const openRunSelected = (ids: string[]) => {
+    const set = new Set(ids);
+    setRunModal({ candidates: folderCases.filter((c) => set.has(c.id)), defaultName: defaultRunName(), mode: 'selected' });
+  };
+  // Hand off to the runner: the #runs/<id> hash drops the user into RunPlayer.
+  const handleRunStarted = (runId: string) => {
+    setRunModal(null);
+    window.location.hash = `runs/${runId}`;
+  };
+
   if (tree.isLoading) {
     return (
       <div className="esp-spinner-wrap">
@@ -252,6 +284,22 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
               <h2 style={{ margin: 0 }}>{folder?.name ?? 'Select a folder'}</h2>
             </div>
             <div className="esp-header-spacer" />
+            {canRun ? (
+              <button
+                className="esp-btn esp-btn-secondary"
+                disabled={!folder || runnableCount === 0}
+                title={
+                  !folder
+                    ? 'Select a folder first'
+                    : runnableCount === 0
+                      ? 'No active cases in this folder to run'
+                      : 'Start a run from this folder’s active cases'
+                }
+                onClick={openRunFolder}
+              >
+                ▶ Run folder
+              </button>
+            ) : null}
             {canAuthor ? (
               <>
                 <button
@@ -293,6 +341,7 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
                   ? {
                       onDelete: handleBulkDelete,
                       onSetStatus: handleBulkSetStatus,
+                      onRun: canRun ? openRunSelected : undefined,
                       busy: deleteCase.isPending || updateCase.isPending,
                     }
                   : undefined
@@ -309,6 +358,7 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
             folderPath={selectedFolderPath}
             saving={saving}
             onSave={handleSave}
+            onSaveAndNew={handleSaveAndNew}
             onCancelNew={() => setCreatingCase(false)}
           />
         ) : selectedCaseId && selectedCase.data ? (
@@ -355,6 +405,16 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
         />
       ) : null}
 
+      {runModal ? (
+        <StartRunModal
+          candidates={runModal.candidates}
+          defaultName={runModal.defaultName}
+          mode={runModal.mode}
+          onClose={() => setRunModal(null)}
+          onStarted={handleRunStarted}
+        />
+      ) : null}
+
       {showNewFolder ? (
         <NewFolderModal
           tree={tree.data ?? []}
@@ -371,6 +431,97 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
 
       {toast ? <Toast message={toast} /> : null}
     </div>
+  );
+}
+
+/** Lightweight run launcher for the repository handoff: pre-filled name + an
+ *  environment, cases already chosen by context. Assignee defaults to the current
+ *  user server-side and packaging is a manager concern, so neither is asked here —
+ *  the heavyweight cross-folder picker still lives in RunsView. */
+function StartRunModal({
+  candidates,
+  defaultName,
+  mode,
+  onClose,
+  onStarted,
+}: {
+  candidates: TestCaseSummary[];
+  defaultName: string;
+  mode: 'folder' | 'selected';
+  onClose: () => void;
+  onStarted: (runId: string) => void;
+}) {
+  const createRun = useCreateRun();
+  const [name, setName] = useState(defaultName);
+  const [environment, setEnvironment] = useState<Environment>('TEST');
+  const [includeDrafts, setIncludeDrafts] = useState(false);
+
+  const activeCount = candidates.filter((c) => c.status === 'ACTIVE').length;
+  const nonActiveCount = candidates.length - activeCount;
+  // "Run selected" runs exactly what the user picked; "Run folder" is active-only
+  // unless they opt in to drafts/other statuses.
+  const runnable = mode === 'selected' || includeDrafts ? candidates : candidates.filter((c) => c.status === 'ACTIVE');
+  const canStart = name.trim().length > 0 && runnable.length > 0 && !createRun.isPending;
+
+  const start = () =>
+    createRun.mutate(
+      { name: name.trim(), environment, testCaseIds: runnable.map((c) => c.id) },
+      { onSuccess: (r) => onStarted(r.id) },
+    );
+
+  return (
+    <Modal
+      title="Start a run"
+      maxWidth={460}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="esp-btn esp-btn-secondary" onClick={onClose} disabled={createRun.isPending}>
+            Cancel
+          </button>
+          <button className="esp-btn esp-btn-primary" disabled={!canStart} onClick={start}>
+            {createRun.isPending ? 'Starting…' : `▶ Start run (${runnable.length})`}
+          </button>
+        </>
+      }
+    >
+      <div className="esp-field">
+        <label className="esp-label">Run name</label>
+        <input
+          className="esp-input"
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && canStart) start();
+          }}
+        />
+      </div>
+      <div className="esp-field">
+        <label className="esp-label">Environment</label>
+        <select className="esp-select" value={environment} onChange={(e) => setEnvironment(e.target.value as Environment)}>
+          {ENVIRONMENTS.map((env) => (
+            <option key={env} value={env}>
+              {env}
+            </option>
+          ))}
+        </select>
+      </div>
+      {mode === 'folder' && nonActiveCount > 0 ? (
+        <label className="esp-pick-row" style={{ marginBottom: 6 }}>
+          <input type="checkbox" checked={includeDrafts} onChange={(e) => setIncludeDrafts(e.target.checked)} />
+          <span>Include {nonActiveCount} non-active case{nonActiveCount === 1 ? '' : 's'} (drafts, etc.)</span>
+        </label>
+      ) : null}
+      <p className="esp-muted" style={{ fontSize: 13, margin: '4px 0 0' }}>
+        {runnable.length > 0
+          ? `${runnable.length} case${runnable.length === 1 ? '' : 's'} will be added to this run.`
+          : 'No runnable cases — adjust your selection.'}
+      </p>
+      {createRun.isError ? (
+        <p className="esp-error" style={{ fontSize: 12, marginTop: 6 }}>{(createRun.error as Error).message}</p>
+      ) : null}
+    </Modal>
   );
 }
 

@@ -868,3 +868,91 @@ button {
 }
 
 .esp-pick-row:hover { background: var(--esp-powder-soft); }
+
+/* ---------- Pipeline board (the "manufacturing line") ---------- */
+/* A horizontal row of stage columns that scrolls sideways when it overflows —
+   this IS the line, so it stays horizontal at every width (no 980px stack). */
+.esp-board {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+  align-items: flex-start;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 20px 24px;
+  min-height: 0;
+}
+
+.esp-board-col {
+  flex: 0 0 300px;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 100%;
+  background: var(--esp-powder-soft);
+  border: 1px solid var(--esp-border);
+  border-radius: var(--esp-radius);
+}
+
+.esp-board-col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--esp-border);
+}
+
+.esp-board-col-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--esp-muted);
+}
+
+.esp-board-col-body {
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.esp-run-card {
+  background: var(--esp-surface);
+  border: 1px solid var(--esp-border);
+  border-radius: var(--esp-radius-sm);
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: var(--esp-shadow);
+}
+
+.esp-run-card:hover { border-color: var(--esp-blue-strong); }
+
+.esp-run-card-title {
+  font-weight: 600;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.esp-run-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--esp-muted);
+}
+
+.esp-run-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}

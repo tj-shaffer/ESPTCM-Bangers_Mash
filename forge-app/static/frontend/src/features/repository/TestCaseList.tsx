@@ -9,6 +9,8 @@ import { PriorityBadge, StatusBadge } from '../../components/ui';
 interface BulkActions {
   onDelete: (ids: string[]) => Promise<void>;
   onSetStatus: (ids: string[], status: TestCaseStatus) => Promise<void>;
+  /** Start a run from the selected cases (handoff into execution). */
+  onRun?: (ids: string[]) => void;
   busy?: boolean;
 }
 
@@ -80,6 +82,16 @@ export function TestCaseList({ cases, selectedId, onSelect, bulk }: Props) {
             {sel.size} selected
           </span>
           <div className="esp-header-spacer" />
+          {bulk.onRun ? (
+            <button
+              className="esp-btn esp-btn-primary"
+              disabled={bulk.busy}
+              onClick={() => bulk.onRun!(ids())}
+              title="Start a test run from the selected cases"
+            >
+              ▶ Run selected
+            </button>
+          ) : null}
           <select
             className="esp-select"
             style={{ width: 'auto' }}

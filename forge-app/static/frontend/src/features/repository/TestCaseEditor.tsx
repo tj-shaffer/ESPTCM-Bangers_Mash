@@ -49,6 +49,9 @@ interface Props {
   folderName: string;
   saving: boolean;
   onSave: (input: Omit<CreateTestCaseInput, 'folderId'>) => void;
+  /** Authoring a new case: save it and immediately reset to a blank one in the
+   *  same folder, for adding several cases in a row. */
+  onSaveAndNew?: (input: Omit<CreateTestCaseInput, 'folderId'>) => Promise<void> | void;
   onCancelNew?: () => void;
   onDuplicate?: () => void;
   onDelete?: () => void;
@@ -107,6 +110,7 @@ export function TestCaseEditor({
   folderName,
   saving,
   onSave,
+  onSaveAndNew,
   onCancelNew,
   onDuplicate,
   onDelete,
@@ -158,26 +162,43 @@ export function TestCaseEditor({
   };
 
   const canSave = form.title.trim().length > 0 && dirty && !saving;
+  const titleRef = useRef<HTMLInputElement>(null);
+
+  const buildPayload = (): Omit<CreateTestCaseInput, 'folderId'> => ({
+    title: form.title,
+    objective: form.objective || undefined,
+    preconditions: form.preconditions || undefined,
+    testType: form.testType,
+    priority: form.priority,
+    status: form.status,
+    vendors: form.vendors,
+    steps: form.steps
+      .filter((s) => s.action.trim() || s.expectedResult.trim())
+      .map((s) => ({
+        action: s.action,
+        testData: s.testData || undefined,
+        expectedResult: s.expectedResult,
+        screenshotRequired: s.screenshotRequired,
+      })),
+  });
 
   const submit = () => {
-    onSave({
-      title: form.title,
-      objective: form.objective || undefined,
-      preconditions: form.preconditions || undefined,
-      testType: form.testType,
-      priority: form.priority,
-      status: form.status,
-      vendors: form.vendors,
-      steps: form.steps
-        .filter((s) => s.action.trim() || s.expectedResult.trim())
-        .map((s) => ({
-          action: s.action,
-          testData: s.testData || undefined,
-          expectedResult: s.expectedResult,
-          screenshotRequired: s.screenshotRequired,
-        })),
-    });
+    onSave(buildPayload());
     setDirty(false);
+  };
+
+  // Save, then blank the form (staying in new-case mode) and focus the title so
+  // the next case can be typed without leaving the editor.
+  const submitAndNew = async () => {
+    if (!onSaveAndNew) return;
+    try {
+      await onSaveAndNew(buildPayload());
+      setForm(toForm(null));
+      setDirty(true);
+      titleRef.current?.focus();
+    } catch {
+      /* parent surfaces the error; leave the form intact to retry */
+    }
   };
 
   return (
@@ -238,6 +259,7 @@ export function TestCaseEditor({
 
       <Field label="Title">
         <input
+          ref={titleRef}
           className="esp-input"
           value={form.title}
           placeholder="e.g. Reserve an available plot"
@@ -385,6 +407,11 @@ export function TestCaseEditor({
             {saving ? 'Saving…' : isNew ? 'Create test case' : 'Save changes'}
           </button>
         )}
+        {isNew && !readOnly && onSaveAndNew ? (
+          <button className="esp-btn esp-btn-secondary" onClick={() => void submitAndNew()} disabled={!canSave}>
+            Save &amp; add another
+          </button>
+        ) : null}
         {isNew && onCancelNew ? (
           <button className="esp-btn esp-btn-secondary" onClick={onCancelNew} disabled={saving}>
             Cancel

@@ -2,9 +2,9 @@
  * Typed configuration loader (pilot / standalone web-app mode).
  *
  * The pilot ships as a standalone web app on Neon + Vercel (see DECISIONS.md
- * ADR-006 / memory "pilot-stack-neon-vercel"), gated by a shared password — it
- * does NOT need Jira / Anthropic / Teams to boot, so only DATABASE_URL and
- * TESTFORGE_PASSWORD are required. Integration creds remain OPTIONAL here so the
+ * ADR-006 / memory "pilot-stack-neon-vercel"), with app-managed email+password
+ * accounts (ADR-008) — it does NOT need Jira / Anthropic / Teams to boot, so
+ * only DATABASE_URL is required. Integration creds remain OPTIONAL here so the
  * production build can light them up later without a schema change.
  *
  * Required vars are validated on boot — `loadConfig()` throws with a single
@@ -24,32 +24,15 @@ export interface AppConfig {
 
   databaseUrl: string;
 
-  /** Shared password for the app's login gate (break-glass). */
-  password: string;
   /** HMAC secret used to sign session tokens. */
   authSecret: string;
 
-  /** Public origin of the deployed app, used to build OAuth redirects. */
-  appBaseUrl: string;
   /**
-   * accountIds that should always resolve to SUPER_ADMIN. Applied on OAuth
-   * login (and to the break-glass session) so the role panel is reachable on a
-   * fresh database. Comma-separated env SUPER_ADMIN_ACCOUNT_IDS.
+   * Seed credentials for the first SUPER_ADMIN, applied idempotently on boot so
+   * the role panel is reachable on a fresh database. Undefined if unset (e.g.
+   * once a real admin exists you can drop these). See DECISIONS.md ADR-008.
    */
-  superAdminAccountIds: string[];
-
-  /**
-   * Atlassian OAuth 2.0 (3LO) — "Log in with Atlassian". Undefined until the
-   * developer-console app is provisioned; while undefined the app falls back to
-   * the shared-password gate. See DECISIONS.md ADR-007.
-   */
-  atlassianOAuth:
-    | {
-        clientId: string;
-        clientSecret: string;
-        redirectUri: string;
-      }
-    | undefined;
+  bootstrapAdmin: { email: string; password: string } | undefined;
 
   /** Optional integrations — undefined until provisioned. */
   anthropic: { apiKey: string; model: string; cheapModel: string | undefined } | undefined;
@@ -78,8 +61,6 @@ export function loadConfig(): AppConfig {
   const missing: string[] = [];
   const databaseUrl = optionalEnv('DATABASE_URL');
   if (!databaseUrl) missing.push('DATABASE_URL');
-  const password = optionalEnv('TESTFORGE_PASSWORD');
-  if (!password) missing.push('TESTFORGE_PASSWORD');
 
   if (missing.length > 0) {
     throw new Error(
@@ -91,22 +72,12 @@ export function loadConfig(): AppConfig {
   const nodeEnv: AppConfig['nodeEnv'] =
     nodeEnvRaw === 'production' || nodeEnvRaw === 'test' ? nodeEnvRaw : 'development';
 
-  // Prefer an explicit signing secret; fall back to a password-derived one in
-  // dev so the app still boots. Always set TESTFORGE_INTERNAL_SECRET in prod.
-  const authSecret = optionalEnv('TESTFORGE_INTERNAL_SECRET') ?? `dev-insecure-${password}`;
+  // Prefer an explicit signing secret; fall back to an insecure constant in dev
+  // so the app still boots. Always set TESTFORGE_INTERNAL_SECRET in prod.
+  const authSecret = optionalEnv('TESTFORGE_INTERNAL_SECRET') ?? 'dev-insecure-secret';
 
-  const appBaseUrl = (optionalEnv('APP_BASE_URL') ?? `http://localhost:${process.env.PORT ?? '3001'}`)
-    .replace(/\/+$/, '');
-  const superAdminAccountIds = (optionalEnv('SUPER_ADMIN_ACCOUNT_IDS') ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  const oauthClientId = optionalEnv('ATLASSIAN_OAUTH_CLIENT_ID');
-  const oauthClientSecret = optionalEnv('ATLASSIAN_OAUTH_CLIENT_SECRET');
-  // Default the callback to this app's own /api/auth/callback so dev just works.
-  const oauthRedirectUri =
-    optionalEnv('ATLASSIAN_OAUTH_REDIRECT_URI') ?? `${appBaseUrl}/api/auth/callback`;
+  const bootstrapEmail = optionalEnv('BOOTSTRAP_ADMIN_EMAIL');
+  const bootstrapPassword = optionalEnv('BOOTSTRAP_ADMIN_PASSWORD');
 
   const anthropicApiKey = optionalEnv('ANTHROPIC_API_KEY');
   const jiraBaseUrl = optionalEnv('JIRA_BASE_URL');
@@ -121,13 +92,10 @@ export function loadConfig(): AppConfig {
     nodeEnv,
     port: Number.parseInt(process.env.PORT ?? '3001', 10),
     databaseUrl: databaseUrl!,
-    password: password!,
     authSecret,
-    appBaseUrl,
-    superAdminAccountIds,
-    atlassianOAuth:
-      oauthClientId && oauthClientSecret
-        ? { clientId: oauthClientId, clientSecret: oauthClientSecret, redirectUri: oauthRedirectUri }
+    bootstrapAdmin:
+      bootstrapEmail && bootstrapPassword
+        ? { email: bootstrapEmail, password: bootstrapPassword }
         : undefined,
     anthropic: anthropicApiKey
       ? {

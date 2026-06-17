@@ -129,9 +129,17 @@ enum AIAnalysisType {
 
 model UserRole {
   id                 String   @id @default(uuid())
+  // Stable internal account id — the JWT subject and the value stored in every
+  // ownerAccountId / assignedToAccountId field. App-managed users get a
+  // generated UUID here (the column name is historical; not Atlassian-specific).
   atlassianAccountId String   @unique
   displayName        String
-  email              String?
+  // Login identifier for app-managed (email + password) authentication.
+  email              String   @unique
+  // scrypt hash ("scrypt$<salt>$<hash>"); null only for not-yet-provisioned rows.
+  passwordHash       String?
+  // Set when an admin issues a temp password — forces a change on next login.
+  mustChangePassword Boolean  @default(false)
   role               Role
   // Reserved Phase 2 — not enforced in v1:
   markets            String[] @default([])

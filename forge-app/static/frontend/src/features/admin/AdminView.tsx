@@ -32,7 +32,7 @@ export function AdminView() {
       return;
     }
     try {
-      await resetPassword.mutateAsync({ accountId: u.atlassianAccountId, password: pw });
+      await resetPassword.mutateAsync({ accountId: u.subjectId, password: pw });
       setNotice(`Password reset for ${u.displayName}. They’ll be asked to change it on next login.`);
     } catch (err) {
       setNotice(err instanceof Error ? err.message : 'Could not reset password.');
@@ -70,9 +70,9 @@ export function AdminView() {
           </thead>
           <tbody>
             {users.map((u: ManagedUser) => {
-              const isSelf = u.atlassianAccountId === auth.accountId;
+              const isSelf = u.subjectId === auth.accountId;
               return (
-                <tr key={u.atlassianAccountId}>
+                <tr key={u.subjectId}>
                   <td>
                     {u.displayName}
                     {isSelf ? <span className="esp-muted"> (you)</span> : null}
@@ -84,7 +84,7 @@ export function AdminView() {
                       value={u.role}
                       disabled={setRole.isPending}
                       onChange={(e) =>
-                        setRole.mutate({ accountId: u.atlassianAccountId, role: e.target.value as Role })
+                        setRole.mutate({ accountId: u.subjectId, role: e.target.value as Role })
                       }
                     >
                       {ROLES.map((r) => (

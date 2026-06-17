@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Spinner from '@atlaskit/spinner';
 import { invokeResolver } from '../../api/client';
-import { useCreateRun, useDeleteRun, usePackages, useRun, useRuns, useSetRunStage } from '../../api/runs';
+import { useCreateRun, useDeleteRun, usePackages, useRun, useRuns, useSetRunStage, useSignOffRun } from '../../api/runs';
 import { ENVIRONMENTS, RUN_STAGES, RUN_STAGE_LABEL, TEAM_MEMBERS, tcId } from '../../domain/types';
 import type { Environment, TestCaseSummary, TestRunDetail } from '../../domain/types';
 import { Modal, Toast } from '../../components/ui';
@@ -17,6 +17,7 @@ export function RunsView({ initialStageFilter = '', heading = 'Test Runs' }: { i
   const canManageRuns = auth.can('run.create');
   const isManager = auth.hasRole('SUPER_ADMIN', 'TEST_MANAGER');
   const canSubmitStage = auth.can('run.setStage');
+  const canSignOff = auth.can('run.signOff');
   const runs = useRuns();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [runnerExecId, setRunnerExecId] = useState<string | null>(null);
@@ -167,6 +168,13 @@ export function RunsView({ initialStageFilter = '', heading = 'Test Runs' }: { i
                 ) : null}
               </div>
 
+              <ApprovalPanel
+                run={detail}
+                canSignOff={canSignOff}
+                defaultApprover={auth.displayName ?? ''}
+                onDone={flash}
+              />
+
               <div className="esp-list">
                 {detail.executions.map((e) => (
                   <div key={e.id} className="esp-case-row" onClick={() => setRunnerExecId(e.id)}>
@@ -216,6 +224,94 @@ export function RunsView({ initialStageFilter = '', heading = 'Test Runs' }: { i
       ) : null}
 
       {toast ? <Toast message={toast} /> : null}
+    </div>
+  );
+}
+
+/** Approval sign-off — shown when a run is ready for approval, or its recorded
+ *  decision once signed off. Identity-light: the approver name is captured, not
+ *  enforced against a dedicated role. See ENHANCEMENTS #11. */
+function ApprovalPanel({
+  run,
+  canSignOff,
+  defaultApprover,
+  onDone,
+}: {
+  run: TestRunDetail;
+  canSignOff: boolean;
+  defaultApprover: string;
+  onDone: (msg: string) => void;
+}) {
+  const signOff = useSignOffRun();
+  const [approver, setApprover] = useState(defaultApprover);
+  const [note, setNote] = useState('');
+
+  if (run.stage === 'APPROVED') {
+    return (
+      <div className="esp-approval esp-approval-done">
+        <strong>✅ Approved{run.approverName ? ` by ${run.approverName}` : ''}</strong>
+        {run.approvedAt ? <span className="esp-muted"> · {new Date(run.approvedAt).toLocaleString()}</span> : null}
+        {run.approvalNote ? <div className="esp-muted" style={{ marginTop: 4 }}>“{run.approvalNote}”</div> : null}
+      </div>
+    );
+  }
+
+  if (run.stage !== 'READY_FOR_APPROVAL') return null;
+
+  if (!canSignOff) {
+    return (
+      <div className="esp-approval">
+        <strong>⚑ Ready for approval</strong>
+        <span className="esp-muted"> · awaiting sign-off from an approver.</span>
+      </div>
+    );
+  }
+
+  const go = (decision: 'APPROVED' | 'REJECTED') => {
+    if (!approver.trim()) return;
+    signOff.mutate(
+      { id: run.id, decision, approverName: approver, note: note.trim() || undefined },
+      { onSuccess: () => onDone(decision === 'APPROVED' ? 'Run approved' : 'Run sent back to testers') },
+    );
+  };
+
+  return (
+    <div className="esp-approval">
+      <div className="esp-label" style={{ marginBottom: 8 }}>⚑ Approval sign-off</div>
+      <div className="esp-grid-2" style={{ marginBottom: 8 }}>
+        <input
+          className="esp-input"
+          placeholder="Approver name (e.g. Alex)"
+          value={approver}
+          onChange={(e) => setApprover(e.target.value)}
+        />
+      </div>
+      <textarea
+        className="esp-textarea"
+        style={{ minHeight: 40, marginBottom: 8 }}
+        placeholder="Note (optional) — e.g. reviewed the failed steps, OK to proceed"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          className="esp-btn esp-btn-primary"
+          disabled={!approver.trim() || signOff.isPending}
+          onClick={() => go('APPROVED')}
+        >
+          {signOff.isPending ? 'Saving…' : '✅ Approve'}
+        </button>
+        <button
+          className="esp-btn esp-btn-danger"
+          disabled={!approver.trim() || signOff.isPending}
+          onClick={() => go('REJECTED')}
+        >
+          ✕ Reject &amp; send back
+        </button>
+      </div>
+      {signOff.isError ? (
+        <p className="esp-error" style={{ fontSize: 12, marginTop: 6 }}>{(signOff.error as Error).message}</p>
+      ) : null}
     </div>
   );
 }

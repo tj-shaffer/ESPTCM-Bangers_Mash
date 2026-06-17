@@ -129,10 +129,12 @@ enum AIAnalysisType {
 
 model UserRole {
   id                 String   @id @default(uuid())
-  // Stable internal account id — the JWT subject and the value stored in every
+  // Stable internal subject id — the JWT subject and the value stored in every
   // ownerAccountId / assignedToAccountId field. App-managed users get a
-  // generated UUID here (the column name is historical; not Atlassian-specific).
-  atlassianAccountId String   @unique
+  // generated UUID here. This is the seam a future Entra/AD `oid` will occupy
+  // (see docs/AZURE-AD-MIGRATION.md). Renamed from atlassianAccountId, which was
+  // misleading — there is no Atlassian account behind it.
+  subjectId          String   @unique
   displayName        String
   // Login identifier for app-managed (email + password) authentication.
   email              String   @unique
@@ -336,6 +338,12 @@ model TestCycle {
   // Identity-light run assignee (free text / seeded name). Real per-user
   // enforcement is deferred to the Azure AD / SSO state — see ENHANCEMENTS #5.
   assigneeName String?
+  // Identity-light approval sign-off (recorded when stage → APPROVED, or the
+  // rejection note when sent back). A dedicated Approver role is future SSO
+  // hardening. See ENHANCEMENTS #11.
+  approverName String?
+  approvalNote String?
+  approvedAt   DateTime?
   // NOTE: ExecutionStatus reused per the brief; a cycle being SKIPPED/PASS is
   // semantically odd. Candidate for a dedicated CycleStatus enum in Sprint 2.
   status      ExecutionStatus @default(NOT_STARTED)

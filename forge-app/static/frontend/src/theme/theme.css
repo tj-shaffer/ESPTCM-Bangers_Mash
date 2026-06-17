@@ -735,6 +735,20 @@ button {
 .esp-stage-READY_FOR_APPROVAL { background: rgba(124, 92, 196, 0.14); color: #6b4fb8; }
 .esp-stage-APPROVED { background: rgba(46, 125, 91, 0.13); color: var(--esp-active); }
 
+/* ---------- approval sign-off ---------- */
+
+.esp-approval {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--esp-border);
+  border-radius: var(--esp-radius);
+  background: var(--esp-powder-soft);
+}
+.esp-approval-done {
+  background: rgba(46, 125, 91, 0.10);
+  border-color: rgba(46, 125, 91, 0.30);
+}
+
 /* ---------- progress bar ---------- */
 
 .esp-progress {

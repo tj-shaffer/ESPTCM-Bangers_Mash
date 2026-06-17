@@ -29,6 +29,7 @@ export function verifyPassword(plain: string, stored: string | null | undefined)
   const parts = stored.split('$');
   if (parts.length !== 3 || parts[0] !== PREFIX) return false;
   const [, saltHex, hashHex] = parts;
+  if (!saltHex || !hashHex) return false;
   try {
     const salt = Buffer.from(saltHex, 'hex');
     const expected = Buffer.from(hashHex, 'hex');

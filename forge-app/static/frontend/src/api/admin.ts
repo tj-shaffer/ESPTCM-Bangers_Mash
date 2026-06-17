@@ -8,7 +8,7 @@ import { invokeResolver } from './client';
 import type { Role } from './permissions';
 
 export interface ManagedUser {
-  atlassianAccountId: string;
+  subjectId: string;
   displayName: string;
   email: string | null;
   role: Role;
@@ -45,7 +45,7 @@ export function useCreateUser() {
 export function useResetPassword() {
   return useMutation({
     mutationFn: ({ accountId, password }: { accountId: string; password: string }) =>
-      invokeResolver<{ atlassianAccountId: string; email: string }>('admin.resetPassword', {
+      invokeResolver<{ subjectId: string; email: string }>('admin.resetPassword', {
         accountId,
         password,
       }),

@@ -20,7 +20,7 @@ import { hashPassword, verifyPassword } from './password';
  */
 export async function resolveRole(accountId: string): Promise<Role> {
   const row = await prisma.userRole.findUnique({
-    where: { atlassianAccountId: accountId },
+    where: { subjectId: accountId },
     select: { role: true },
   });
   return row?.role ?? Role.OBSERVER;
@@ -40,7 +40,7 @@ export async function authenticate(email: string, password: string): Promise<Aut
   });
   if (!row || !verifyPassword(password, row.passwordHash)) return null;
   return {
-    accountId: row.atlassianAccountId,
+    accountId: row.subjectId,
     displayName: row.displayName,
     role: row.role,
     mustChangePassword: row.mustChangePassword,
@@ -61,7 +61,7 @@ export async function createUser(input: CreateUserInput) {
   if (existing) throw new Error('A user with that email already exists');
   return prisma.userRole.create({
     data: {
-      atlassianAccountId: randomUUID(),
+      subjectId: randomUUID(),
       email,
       displayName: input.displayName.trim(),
       role: input.role,
@@ -69,21 +69,21 @@ export async function createUser(input: CreateUserInput) {
       // New accounts get a temp password and must change it on first login.
       mustChangePassword: true,
     },
-    select: { atlassianAccountId: true, displayName: true, email: true, role: true },
+    select: { subjectId: true, displayName: true, email: true, role: true },
   });
 }
 
 /** Admin reset: set a new (temporary) password and force a change on next login. */
 export async function setUserPassword(accountId: string, password: string) {
   const row = await prisma.userRole.findUnique({
-    where: { atlassianAccountId: accountId },
+    where: { subjectId: accountId },
     select: { id: true },
   });
   if (!row) return null;
   return prisma.userRole.update({
-    where: { atlassianAccountId: accountId },
+    where: { subjectId: accountId },
     data: { passwordHash: hashPassword(password), mustChangePassword: true },
-    select: { atlassianAccountId: true, email: true },
+    select: { subjectId: true, email: true },
   });
 }
 
@@ -93,13 +93,13 @@ export async function changeOwnPassword(
   current: string,
   next: string,
 ): Promise<{ ok: boolean; reason?: string }> {
-  const row = await prisma.userRole.findUnique({ where: { atlassianAccountId: accountId } });
+  const row = await prisma.userRole.findUnique({ where: { subjectId: accountId } });
   if (!row) return { ok: false, reason: 'Account not found' };
   if (!verifyPassword(current, row.passwordHash)) {
     return { ok: false, reason: 'Current password is incorrect' };
   }
   await prisma.userRole.update({
-    where: { atlassianAccountId: accountId },
+    where: { subjectId: accountId },
     data: { passwordHash: hashPassword(next), mustChangePassword: false },
   });
   return { ok: true };
@@ -124,7 +124,7 @@ export async function ensureBootstrapAdmin(): Promise<void> {
   }
   await prisma.userRole.create({
     data: {
-      atlassianAccountId: randomUUID(),
+      subjectId: randomUUID(),
       email,
       displayName: 'Administrator',
       role: Role.SUPER_ADMIN,

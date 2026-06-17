@@ -2,24 +2,26 @@
 
 Authoritative working context for this repo. When this file and the PRD/brief disagree, **this file wins** (it carries the corrections applied during implementation kickoff). Source specs: [everstory_testcase_prd.md](everstory_testcase_prd.md) (the what/why) and [testforge_claude_code_brief.md](testforge_claude_code_brief.md) (phased build prompts). Rationale for the load-bearing choices lives in [DECISIONS.md](DECISIONS.md).
 
+> **⚠️ ARCHITECTURE HAS CHANGED — see [STATUS.md](STATUS.md).** This file predates the Neon/Vercel pivot (DECISIONS.md ADR-009). The app is **no longer a Forge app and no longer on Azure**: it is a standalone Vite SPA + Express/Prisma API on **Neon Postgres / Vercel**. The Forge/Azure descriptions below are kept for history and flagged inline as **[OBSOLETE]**. The domain facts, the env-driven model rule, native-`fetch`, `/search/jql`, UUID/`displayId` PKs, strict TS, and server-side role enforcement all still hold. Auth is now app-managed email+password (ADR-008), not the shared secret described below. Where STATUS.md disagrees with this file, STATUS.md wins.
+
 ## What this is
 
 **TestForge** — a Jira-native test case management app for **Everstory** (funeral/cemetery operator), replacing Excel-based test tracking. Monorepo, two packages:
 
-- **`forge-app/`** — Atlassian **Forge Custom UI** app (React 18 + Atlassian Design System), embedded in Jira Cloud.
-- **`api/`** — Node 20 + TypeScript (strict) + Express + Prisma backend, hosted on Azure App Service; Azure PostgreSQL primary datastore, Azure Blob for files.
+- **`forge-app/`** — **[OBSOLETE wrapper]** Atlassian Forge Custom UI app, embedded in Jira Cloud. *Today this directory holds the standalone Vite + React 18 SPA at `forge-app/static/frontend/`; it is not a Forge app (STATUS.md).*
+- **`api/`** — Node 20 + TypeScript (strict) + Express + Prisma backend. **[OBSOLETE: hosted on Azure App Service / Azure PostgreSQL]** — today it runs as a Vercel serverless function against **Neon Postgres**; Azure Blob for files is a future swap.
 
 External services: Anthropic Claude API (AI features), Jira REST v3, Microsoft Teams incoming webhooks.
 
 ## Invariants — do not violate
 
-- **Custom UI, NOT UI Kit.** Never use `render: native` in `manifest.yml`. Custom UI modules reference a static `resource` (built frontend) + a `resolver` function. Custom UI is required because we use recharts, a drag-and-drop folder tree, TanStack Query, and Zustand — none of which work under UI Kit.
-- **Call path:** frontend → resolver via `@forge/bridge` `invoke()`; resolver → Azure API via `@forge/api` `fetch()` (egress-allowlisted under `external.fetch.backend`). The internal secret and `accountId` are attached **in the resolver**, never in the browser.
+- **[OBSOLETE — no longer a Forge app] Custom UI, NOT UI Kit.** Historically: never `render: native`; Custom UI modules reference a static `resource` + a `resolver`. *No longer applies — the SPA is a plain Vite app (STATUS.md).*
+- **[OBSOLETE] Call path.** Historically: frontend → resolver via `@forge/bridge` → Azure API via `@forge/api` `fetch()`. *Today: frontend → Express `POST /api/invoke` directly over HTTP with a Bearer session JWT ([client.ts](forge-app/static/frontend/src/api/client.ts)); the secret/`accountId` handling described here no longer exists.*
 - **Anthropic model is env-driven:** `ANTHROPIC_MODEL`, default **`claude-sonnet-4-6`**. Never hardcode a model id. Cheap, high-frequency calls (duplicate detection, step clarity) may use a Haiku-class model. Enable **prompt caching** (`cache_control`) on static system preambles and reusable corpora. Record the resolved model in `AIAnalysis.modelVersion`.
 - **HTTP:** use Node 20's built-in global `fetch`. No `node-fetch`. No `@atlassian/jira-rest-api-client` (doesn't exist) — the Jira client is hand-rolled against `/rest/api/3/*`.
 - **Jira issue search:** use `/rest/api/3/search/jql` (the legacy `/rest/api/3/issue/search` is deprecated).
 - **Primary keys are UUIDs.** Never integer PKs. **Exception:** `TestCase`, `TestPlan`, `VendorChange` carry a separate monotonic `displayId` (autoincrement) rendered as `TC-XXXX` / `TP-XXXX` / `VC-XXXX` — permanent, never reused.
-- **Never use Forge Storage for primary data** — always Azure PostgreSQL (Forge Storage limits are too small for versioned test history).
+- **[OBSOLETE — no Forge] Never use Forge Storage for primary data.** Moot: the datastore is Postgres (Neon today, Azure later). The underlying point stands — primary data lives in Postgres, never an undersized KV store.
 - **TypeScript strict mode** throughout. Roles enforced **server-side** on every API call (the UI only reflects permissions).
 
 ## Jira / domain facts
@@ -32,7 +34,7 @@ External services: Anthropic Claude API (AI features), Jira REST v3, Microsoft T
 
 ## Auth (v1 → Sprint 2)
 
-- **v1 trust boundary (current):** resolver forwards `x-atlassian-account-id` + a shared secret `x-testforge-internal-secret` (env `TESTFORGE_INTERNAL_SECRET`) over TLS; the backend trusts `accountId` only when the secret matches. Keep the secret long/random and out of the browser.
+- **[OBSOLETE — superseded by ADR-008] v1 trust boundary:** resolver forwards `x-atlassian-account-id` + a shared secret `x-testforge-internal-secret`. *No longer used. Current auth is app-managed email + password → 7-day session JWT ([api/src/lib/auth.ts](api/src/lib/auth.ts)); `TESTFORGE_INTERNAL_SECRET` now signs that JWT. Azure/Entra SSO is the future target ([docs/AZURE-AD-MIGRATION.md](docs/AZURE-AD-MIGRATION.md)).*
 - **Sprint 2:** replace with verifying the Forge remote-invocation JWT (issuer = Forge, audience = this app) and read `accountId` from verified claims. (`jwks-rsa` + `jsonwebtoken` are already deps for this.)
 
 ## Local development (no cloud credentials needed)

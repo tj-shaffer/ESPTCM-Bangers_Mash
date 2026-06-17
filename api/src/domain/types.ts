@@ -169,6 +169,17 @@ export interface TestRunSummary {
   assigneeName?: string | null;
   packageId?: string | null;
   packageName?: string | null;
+  approverName?: string | null;
+  approvedAt?: string | null;
+}
+
+/** Approver decision recorded at sign-off. */
+export type SignOffDecision = 'APPROVED' | 'REJECTED';
+
+export interface SignOffInput {
+  decision: SignOffDecision;
+  approverName: string;
+  note?: string;
 }
 
 // ---------- packages (group runs for end-to-end review) ----------
@@ -230,6 +241,9 @@ export interface TestRunDetail {
   assigneeName?: string | null;
   packageId?: string | null;
   packageName?: string | null;
+  approverName?: string | null;
+  approvalNote?: string | null;
+  approvedAt?: string | null;
   executions: RunExecutionSummary[];
 }
 
@@ -331,4 +345,29 @@ export interface DashboardData {
   byVendor: VendorResult[];
   byEnvironment: EnvironmentResult[];
   recent: { id: string; title: string; status: ExecutionStatus; runName: string; at: string }[];
+}
+
+/** Scope filters for the dashboard + export (package / run / test type). */
+export interface DashboardFilters {
+  packageId?: string;
+  runId?: string;
+  testType?: TestType;
+}
+
+/** One per-execution detail row for the exported results artifact. */
+export interface ReportRow {
+  displayId: number;
+  title: string;
+  runName: string;
+  packageName?: string | null;
+  vendors: VendorCode[];
+  environment: Environment;
+  status: ExecutionStatus;
+  stepsDone: number;
+  stepsTotal: number;
+  defectCount: number;
+  jiraKeys: string[];
+  assigneeName?: string | null;
+  stage: RunStage;
+  updatedAt: string;
 }

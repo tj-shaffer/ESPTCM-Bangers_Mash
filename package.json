@@ -2,7 +2,7 @@
   "name": "testforge",
   "version": "0.0.1",
   "private": true,
-  "description": "TestForge — Jira-native test case management for Everstory. Monorepo: Forge Custom UI + Azure-hosted API.",
+  "description": "TestForge — test case management for Everstory. Standalone Vite SPA + Express/Prisma API on Neon/Vercel (Azure is the future target). See STATUS.md.",
   "workspaces": [
     "forge-app",
     "api"
@@ -12,7 +12,6 @@
     "api:build": "npm --workspace api run build",
     "api:migrate": "npm --workspace api run db:migrate",
     "api:generate": "npm --workspace api run db:generate",
-    "forge:lint": "npm --workspace forge-app run lint",
     "demo": "npm --prefix forge-app/static/frontend run demo"
   },
   "engines": {

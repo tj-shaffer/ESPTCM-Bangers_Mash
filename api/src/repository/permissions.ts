@@ -36,6 +36,7 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'exec.get': ALL,
   'attachment.get': ALL,
   'report.dashboard': ALL,
+  'report.export': ALL,
   'jira.check': ALL,
   'jira.options': ALL,
 
@@ -49,9 +50,10 @@ export const PERMISSIONS: Record<string, Role[]> = {
   // manager-gated inside dispatch.
   'run.setStage': EXECUTE,
 
-  // ---------- QC / defect tickets (managers + super admins) ----------
+  // ---------- QC / defect tickets / approval (managers + super admins) ----------
   'defect.toJira': MANAGE,
   'defect.linkJira': MANAGE,
+  'run.signOff': MANAGE,
 
   // ---------- authoring (authors, managers, super admins) ----------
   'repo.createFolder': AUTHOR,

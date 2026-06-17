@@ -14,6 +14,7 @@ import type {
   CreateRunInput,
   CreateTestCaseInput,
   DashboardData,
+  DashboardFilters,
   ExecutionDetail,
   FolderNode,
   ImportResult,
@@ -21,7 +22,9 @@ import type {
   PackageDetail,
   PackageSummary,
   Priority,
+  ReportRow,
   RunStage,
+  SignOffInput,
   StepResultPatch,
   TestCase,
   TestCaseSummary,
@@ -65,6 +68,7 @@ export interface TestCaseStore {
   getRun(id: string): Promise<TestRunDetail | null>;
   updateRun(id: string, patch: UpdateRunInput): Promise<TestRunDetail | null>;
   setRunStage(id: string, stage: RunStage): Promise<TestRunDetail | null>;
+  signOffRun(id: string, input: SignOffInput): Promise<TestRunDetail | null>;
   deleteRun(id: string): Promise<boolean>;
 
   // packages (group runs for end-to-end review)
@@ -82,7 +86,8 @@ export interface TestCaseStore {
   createDefect(executionId: string, input: CreateDefectInput, ownerAccountId: string): Promise<ExecutionDetail | null>;
   getDefect(id: string): Promise<DefectRecord | null>;
   attachJiraKey(defectId: string, jiraIssueKey: string, payload?: Record<string, string>): Promise<ExecutionDetail | null>;
-  getDashboard(projectKey?: string): Promise<DashboardData>;
+  getDashboard(projectKey?: string, filters?: DashboardFilters): Promise<DashboardData>;
+  getReport(projectKey?: string, filters?: DashboardFilters): Promise<ReportRow[]>;
 }
 
 export const DEFAULT_PROJECT = 'DS';

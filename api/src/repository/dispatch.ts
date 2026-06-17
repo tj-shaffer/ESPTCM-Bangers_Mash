@@ -17,9 +17,11 @@ import type {
   CreatePackageInput,
   CreateRunInput,
   CreateTestCaseInput,
+  DashboardFilters,
   ExecutionStatus,
   ImportedCaseRow,
   RunStage,
+  SignOffDecision,
   StepResultPatch,
   UpdateRunInput,
   UpdateTestCaseInput,
@@ -56,7 +58,7 @@ export async function dispatch(
   switch (key) {
     case 'getContext': {
       const user = await prisma.userRole.findUnique({
-        where: { atlassianAccountId: accountId },
+        where: { subjectId: accountId },
         select: { displayName: true, mustChangePassword: true },
       });
       return {
@@ -165,6 +167,29 @@ export async function dispatch(
       const updated = await store.setRunStage(id, stage);
       if (!updated) throw new DispatchError('Run not found', 404);
       return updated;
+    }
+
+    case 'run.signOff': {
+      // In-app approval sign-off (manager-gated in the permission map). Only a
+      // run that's been QC'd to READY_FOR_APPROVAL can be signed off. The
+      // reviewer name + decision are recorded either way. See ENHANCEMENTS #11.
+      const { id, decision, approverName, note } = payload as {
+        id?: string;
+        decision?: SignOffDecision;
+        approverName?: string;
+        note?: string;
+      };
+      if (!id) throw new DispatchError('Run id is required');
+      if (decision !== 'APPROVED' && decision !== 'REJECTED') {
+        throw new DispatchError('A valid decision (APPROVED or REJECTED) is required');
+      }
+      if (!approverName || !approverName.trim()) throw new DispatchError('Approver name is required');
+      const run = await store.getRun(id);
+      if (!run) throw new DispatchError('Run not found', 404);
+      if (run.stage !== 'READY_FOR_APPROVAL') {
+        throw new DispatchError('Only a run marked ready for approval can be signed off.', 400);
+      }
+      return store.signOffRun(id, { decision, approverName, note });
     }
 
     case 'run.delete': {
@@ -305,7 +330,10 @@ export async function dispatch(
     }
 
     case 'report.dashboard':
-      return store.getDashboard(payload.projectKey as string | undefined);
+      return store.getDashboard(payload.projectKey as string | undefined, (payload.filters ?? {}) as DashboardFilters);
+
+    case 'report.export':
+      return store.getReport(payload.projectKey as string | undefined, (payload.filters ?? {}) as DashboardFilters);
 
     // ---------- administration (SUPER_ADMIN only; gated in permissions map) ----------
 
@@ -313,7 +341,7 @@ export async function dispatch(
       return prisma.userRole.findMany({
         orderBy: { displayName: 'asc' },
         select: {
-          atlassianAccountId: true,
+          subjectId: true,
           displayName: true,
           email: true,
           role: true,
@@ -327,7 +355,7 @@ export async function dispatch(
       if (!targetAccountId) throw new DispatchError('accountId is required');
       if (!nextRole || !(nextRole in Role)) throw new DispatchError('A valid role is required');
       const target = await prisma.userRole.findUnique({
-        where: { atlassianAccountId: targetAccountId },
+        where: { subjectId: targetAccountId },
         select: { role: true },
       });
       if (!target) throw new DispatchError('User not found', 404);
@@ -337,9 +365,9 @@ export async function dispatch(
         if (admins <= 1) throw new DispatchError('Cannot demote the last super admin', 400);
       }
       return prisma.userRole.update({
-        where: { atlassianAccountId: targetAccountId },
+        where: { subjectId: targetAccountId },
         data: { role: nextRole as Role },
-        select: { atlassianAccountId: true, displayName: true, email: true, role: true },
+        select: { subjectId: true, displayName: true, email: true, role: true },
       });
     }
 

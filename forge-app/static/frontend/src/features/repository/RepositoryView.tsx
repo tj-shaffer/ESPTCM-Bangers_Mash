@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Spinner from '@atlaskit/spinner';
-import type { FolderNode } from '../../domain/types';
+import type { FolderNode, TestCaseStatus } from '../../domain/types';
 import {
   useCase,
   useCases,
@@ -136,6 +136,22 @@ export function RepositoryView() {
     flashToast(`Moved to ${target?.name ?? 'folder'}`);
   };
 
+  const handleBulkDelete = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    if (!window.confirm(`Delete ${ids.length} test case${ids.length === 1 ? '' : 's'}? This cannot be undone.`)) return;
+    await Promise.all(ids.map((id) => deleteCase.mutateAsync(id)));
+    qc.invalidateQueries({ queryKey: ['repo'] });
+    if (selectedCaseId && ids.includes(selectedCaseId)) setSelectedCaseId(null);
+    flashToast(`Deleted ${ids.length} test case${ids.length === 1 ? '' : 's'}`);
+  };
+
+  const handleBulkSetStatus = async (ids: string[], status: TestCaseStatus) => {
+    if (ids.length === 0) return;
+    await Promise.all(ids.map((id) => updateCase.mutateAsync({ id, patch: { status } })));
+    qc.invalidateQueries({ queryKey: ['repo'] });
+    flashToast(`Set ${ids.length} case${ids.length === 1 ? '' : 's'} to ${status}`);
+  };
+
   if (tree.isLoading) {
     return (
       <div className="esp-spinner-wrap">
@@ -218,12 +234,22 @@ export function RepositoryView() {
             </div>
           ) : (
             <TestCaseList
+              key={folder?.id ?? 'none'}
               cases={cases.data ?? []}
               selectedId={selectedCaseId}
               onSelect={(id) => {
                 setSelectedCaseId(id);
                 setCreatingCase(false);
               }}
+              bulk={
+                canAuthor
+                  ? {
+                      onDelete: handleBulkDelete,
+                      onSetStatus: handleBulkSetStatus,
+                      busy: deleteCase.isPending || updateCase.isPending,
+                    }
+                  : undefined
+              }
             />
           )}
         </div>

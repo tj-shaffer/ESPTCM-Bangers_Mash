@@ -8,7 +8,7 @@
  *
  * Routes:
  *   GET  /health        — anonymous probe
- *   POST /api/login     — shared-password login → JWT
+ *   POST /api/login     — email + password login → JWT
  *   POST /api/invoke    — resolver-style dispatch (Bearer-gated)
  */
 
@@ -19,10 +19,9 @@ import helmet from 'helmet';
 import cors from 'cors';
 
 import { loadConfig } from './lib/config';
+import { ensureBootstrapAdmin } from './lib/identity';
 import { healthRouter } from './routes/health';
 import { apiRouter } from './routes/invoke';
-import { authRouter } from './routes/auth';
-import { oauthConfigured } from './lib/oauth';
 import { standardLimiter } from './middleware/rateLimiter';
 import { errorHandler } from './middleware/errorHandler';
 

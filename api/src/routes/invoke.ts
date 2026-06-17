@@ -1,6 +1,6 @@
 /**
  * Pilot API routes:
- *   POST /api/login   { password }        -> { token }   (break-glass)
+ *   POST /api/login   { email, password } -> { token, mustChangePassword }
  *   POST /api/invoke  { key, payload }     -> dispatch result   (requires Bearer)
  *
  * /api/invoke mirrors the Forge resolver: the frontend's invokeResolver(key,
@@ -9,9 +9,8 @@
  */
 
 import { Router, type Request, type Response } from 'express';
-import { issueToken, passwordMatches } from '../lib/auth';
-import { loadConfig } from '../lib/config';
-import { resolveRole } from '../lib/identity';
+import { issueToken } from '../lib/auth';
+import { authenticate, resolveRole } from '../lib/identity';
 import { canInvoke } from '../repository/permissions';
 import { requireAuth } from '../middleware/requireAuth';
 import { getStore } from '../repository/prismaStore';
@@ -19,16 +18,21 @@ import { dispatch, DispatchError } from '../repository/dispatch';
 
 export const apiRouter = Router();
 
-apiRouter.post('/login', (req: Request, res: Response) => {
-  const password = (req.body as { password?: unknown })?.password;
-  if (typeof password !== 'string' || !passwordMatches(password)) {
-    res.status(401).json({ error: 'Incorrect password' });
+apiRouter.post('/login', async (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as { email?: unknown; password?: unknown };
+  if (typeof body.email !== 'string' || typeof body.password !== 'string') {
+    res.status(400).json({ error: 'Email and password are required' });
     return;
   }
-  // Break-glass: log in as the first configured super admin so the session has
-  // full access; falls back to an unmapped id (resolves to OBSERVER) if none.
-  const accountId = loadConfig().superAdminAccountIds[0] ?? 'pilot-user';
-  res.json({ token: issueToken(accountId, 'Break-glass admin') });
+  const user = await authenticate(body.email, body.password);
+  if (!user) {
+    res.status(401).json({ error: 'Incorrect email or password' });
+    return;
+  }
+  res.json({
+    token: issueToken(user.accountId, user.displayName),
+    mustChangePassword: user.mustChangePassword,
+  });
 });
 
 apiRouter.post('/invoke', requireAuth, async (req: Request, res: Response) => {

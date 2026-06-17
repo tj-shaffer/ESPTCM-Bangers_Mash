@@ -383,6 +383,19 @@ function StepAttachments({
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
+  const download = async (id: string) => {
+    const a = await fetchAttachment(id);
+    if (!a) return;
+    const url = URL.createObjectURL(base64ToBlob(a.dataBase64, a.contentType));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = a.filename || 'attachment'; // save with the original filename
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+
   return (
     <div style={{ margin: '8px 0' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -409,6 +422,14 @@ function StepAttachments({
               title="Open attachment"
             >
               {a.contentType.startsWith('image/') ? '🖼' : '📄'} {a.filename}
+            </button>
+            <button
+              className="esp-link-btn"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'inherit' }}
+              onClick={() => void download(a.id)}
+              title={`Download ${a.filename}`}
+            >
+              ⬇
             </button>
             <button
               className="esp-link-btn"

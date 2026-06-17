@@ -17,6 +17,7 @@ import type {
   CreatePackageInput,
   CreateRunInput,
   CreateTestCaseInput,
+  DashboardFilters,
   ExecutionStatus,
   ImportedCaseRow,
   RunStage,
@@ -329,7 +330,10 @@ export async function dispatch(
     }
 
     case 'report.dashboard':
-      return store.getDashboard(payload.projectKey as string | undefined);
+      return store.getDashboard(payload.projectKey as string | undefined, (payload.filters ?? {}) as DashboardFilters);
+
+    case 'report.export':
+      return store.getReport(payload.projectKey as string | undefined, (payload.filters ?? {}) as DashboardFilters);
 
     // ---------- administration (SUPER_ADMIN only; gated in permissions map) ----------
 

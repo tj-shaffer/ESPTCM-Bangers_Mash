@@ -1,7 +1,7 @@
 /** Runs / execution / reporting hooks — TanStack Query over the `run.*`,
  *  `exec.*`, and `report.*` resolver endpoints. */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { invokeResolver } from './client';
 import type {
   AddAttachmentInput,
@@ -10,9 +10,11 @@ import type {
   CreatePackageInput,
   CreateRunInput,
   DashboardData,
+  DashboardFilters,
   ExecutionDetail,
   PackageDetail,
   PackageSummary,
+  ReportRow,
   RunStage,
   SignOffInput,
   StepResultPatch,
@@ -253,9 +255,15 @@ export function useLinkDefectJiraManual(runId: string) {
   });
 }
 
-export function useDashboard() {
+export function useDashboard(filters: DashboardFilters = {}) {
   return useQuery({
-    queryKey: keys.dashboard,
-    queryFn: () => invokeResolver<DashboardData>('report.dashboard'),
+    queryKey: [...keys.dashboard, filters],
+    queryFn: () => invokeResolver<DashboardData>('report.dashboard', { filters }),
+    placeholderData: keepPreviousData,
   });
+}
+
+/** Fetch the per-execution detail rows for the current filter scope (for export). */
+export function fetchReport(filters: DashboardFilters = {}): Promise<ReportRow[]> {
+  return invokeResolver<ReportRow[]>('report.export', { filters });
 }

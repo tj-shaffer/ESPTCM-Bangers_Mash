@@ -404,3 +404,28 @@ export interface DashboardData {
   byEnvironment: EnvironmentResult[];
   recent: { id: string; title: string; status: ExecutionStatus; runName: string; at: string }[];
 }
+
+/** Scope filters for the dashboard + export (package / run / test type). */
+export interface DashboardFilters {
+  packageId?: string;
+  runId?: string;
+  testType?: TestType;
+}
+
+/** One per-execution detail row for the exported results artifact. */
+export interface ReportRow {
+  displayId: number;
+  title: string;
+  runName: string;
+  packageName?: string | null;
+  vendors: VendorCode[];
+  environment: Environment;
+  status: ExecutionStatus;
+  stepsDone: number;
+  stepsTotal: number;
+  defectCount: number;
+  jiraKeys: string[];
+  assigneeName?: string | null;
+  stage: RunStage;
+  updatedAt: string;
+}

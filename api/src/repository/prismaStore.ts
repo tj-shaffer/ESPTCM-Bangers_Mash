@@ -2,6 +2,7 @@
  * Neon/Postgres-backed implementation of TestCaseStore (via Prisma).
  */
 
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma';
 import { DEFAULT_PROJECT, type DefectRecord, type StepResultGate, type TestCaseStore } from './store';
 import type {
@@ -13,6 +14,8 @@ import type {
   CreateRunInput,
   CreateTestCaseInput,
   DashboardData,
+  DashboardFilters,
+  ReportRow,
   DefectView,
   Environment,
   EnvironmentResult,
@@ -835,13 +838,27 @@ export class PrismaStore implements TestCaseStore {
     return this.getExecution(executionId);
   }
 
-  async getDashboard(projectKey = DEFAULT_PROJECT): Promise<DashboardData> {
-    const totalCases = await prisma.testCase.count();
-    const cycles = await prisma.testCycle.findMany({ where: { testPlan: { projectKey } }, select: { id: true } });
+  /** Resolve the in-scope cycle ids + an execution `where` for the given filters. */
+  private async scope(
+    projectKey: string,
+    filters: DashboardFilters,
+  ): Promise<{ cycleIds: string[]; execWhere: Prisma.TestExecutionWhereInput }> {
+    const cycleWhere: Prisma.TestCycleWhereInput = { testPlan: { projectKey } };
+    if (filters.runId) cycleWhere.id = filters.runId;
+    else if (filters.packageId) cycleWhere.packageId = filters.packageId;
+    const cycles = await prisma.testCycle.findMany({ where: cycleWhere, select: { id: true } });
     const cycleIds = cycles.map((c) => c.id);
-    const defectCount = await prisma.defect.count({ where: { execution: { testCycleId: { in: cycleIds } } } });
+    const execWhere: Prisma.TestExecutionWhereInput = { testCycleId: { in: cycleIds } };
+    if (filters.testType) execWhere.testCase = { testType: filters.testType };
+    return { cycleIds, execWhere };
+  }
+
+  async getDashboard(projectKey = DEFAULT_PROJECT, filters: DashboardFilters = {}): Promise<DashboardData> {
+    const totalCases = await prisma.testCase.count();
+    const { cycleIds, execWhere } = await this.scope(projectKey, filters);
+    const defectCount = await prisma.defect.count({ where: { execution: execWhere } });
     const executions = await prisma.testExecution.findMany({
-      where: { testCycleId: { in: cycleIds } },
+      where: execWhere,
       include: {
         testCase: { select: { title: true, vendors: true } },
         testCycle: { select: { name: true } },
@@ -902,7 +919,7 @@ export class PrismaStore implements TestCaseStore {
 
     return {
       totalCases,
-      totalRuns: cycles.length,
+      totalRuns: cycleIds.length,
       defectCount,
       byStatus,
       passRate,
@@ -911,6 +928,38 @@ export class PrismaStore implements TestCaseStore {
       byEnvironment,
       recent,
     };
+  }
+
+  async getReport(projectKey = DEFAULT_PROJECT, filters: DashboardFilters = {}): Promise<ReportRow[]> {
+    const { execWhere } = await this.scope(projectKey, filters);
+    const execs = await prisma.testExecution.findMany({
+      where: execWhere,
+      include: {
+        testCase: { select: { displayId: true, title: true, vendors: true } },
+        testCycle: {
+          select: { name: true, stage: true, assigneeName: true, package: { select: { name: true } } },
+        },
+        stepResults: { select: { status: true } },
+        defects: { select: { jiraIssueKey: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+    return execs.map((e) => ({
+      displayId: e.testCase.displayId,
+      title: e.testCase.title,
+      runName: e.testCycle.name,
+      packageName: e.testCycle.package?.name ?? null,
+      vendors: e.testCase.vendors as VendorCode[],
+      environment: e.environment as Environment,
+      status: e.status as ExecutionStatus,
+      stepsTotal: e.stepResults.length,
+      stepsDone: e.stepResults.filter((r) => r.status !== 'NOT_STARTED').length,
+      defectCount: e.defects.length,
+      jiraKeys: e.defects.map((d) => d.jiraIssueKey).filter((k): k is string => !!k),
+      assigneeName: e.testCycle.assigneeName,
+      stage: e.testCycle.stage as RunStage,
+      updatedAt: e.updatedAt.toISOString(),
+    }));
   }
 }
 

@@ -5,6 +5,8 @@
 **Purpose:** Hand this document directly to Claude Code to bootstrap and build TestForge sprint by sprint.  
 **Changelog v1.1:** Corrected to Custom UI (removed `render: native`); model env-driven (`ANTHROPIC_MODEL`, default `claude-sonnet-4-6`) with prompt caching; removed `@atlassian/jira-rest-api-client` and `node-fetch` (Node 20 native `fetch`); Jira search → `/rest/api/3/search/jql`; added `displayId` sequence (TC-XXXX); folder tree uses `@atlaskit/pragmatic-drag-and-drop`; v1 auth = shared internal secret, Sprint-2 Forge-JWT verification. See `CLAUDE.md` and `DECISIONS.md` for the authoritative, corrected invariants.
 
+> **⚠️ POINT-IN-TIME (pre-pivot).** This build brief targets the original Forge Custom UI + Azure architecture and is **historical**. The pilot shipped as a standalone Vite SPA + Express/Prisma API on Neon/Vercel (DECISIONS.md ADR-009). The authoritative as-built state is [STATUS.md](STATUS.md). Use this brief for product/domain context only, not for architecture or build commands.
+
 ---
 
 ## How to Use This Brief

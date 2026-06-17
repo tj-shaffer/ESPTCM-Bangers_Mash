@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "forge-app/static/frontend", "run", "verify:preview"],
       "port": 4321
+    },
+    {
+      "name": "demo",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "forge-app/static/frontend", "run", "dev"],
+      "port": 3000
     }
   ]
 }

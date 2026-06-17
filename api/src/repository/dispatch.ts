@@ -58,7 +58,7 @@ export async function dispatch(
   switch (key) {
     case 'getContext': {
       const user = await prisma.userRole.findUnique({
-        where: { atlassianAccountId: accountId },
+        where: { subjectId: accountId },
         select: { displayName: true, mustChangePassword: true },
       });
       return {
@@ -341,7 +341,7 @@ export async function dispatch(
       return prisma.userRole.findMany({
         orderBy: { displayName: 'asc' },
         select: {
-          atlassianAccountId: true,
+          subjectId: true,
           displayName: true,
           email: true,
           role: true,
@@ -355,7 +355,7 @@ export async function dispatch(
       if (!targetAccountId) throw new DispatchError('accountId is required');
       if (!nextRole || !(nextRole in Role)) throw new DispatchError('A valid role is required');
       const target = await prisma.userRole.findUnique({
-        where: { atlassianAccountId: targetAccountId },
+        where: { subjectId: targetAccountId },
         select: { role: true },
       });
       if (!target) throw new DispatchError('User not found', 404);
@@ -365,9 +365,9 @@ export async function dispatch(
         if (admins <= 1) throw new DispatchError('Cannot demote the last super admin', 400);
       }
       return prisma.userRole.update({
-        where: { atlassianAccountId: targetAccountId },
+        where: { subjectId: targetAccountId },
         data: { role: nextRole as Role },
-        select: { atlassianAccountId: true, displayName: true, email: true, role: true },
+        select: { subjectId: true, displayName: true, email: true, role: true },
       });
     }
 

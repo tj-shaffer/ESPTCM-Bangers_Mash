@@ -113,3 +113,17 @@ Short ADRs for the load-bearing technical choices. Each records the decision and
 **Why.** Unblocks differentiated roles with zero external dependency and full control over who gets in. The identity seam (`api/src/lib/identity.ts`) was built for exactly this swap — login method changed, role model/permission map/UI untouched.
 
 **Consequences.** We now own credential security: scrypt hashing, constant-time verify, JWT over TLS, and the existing `/api` rate limiter against brute-force. The Atlassian OAuth code (`api/src/lib/oauth.ts`, `api/src/routes/auth.ts`) and its env (`ATLASSIAN_OAUTH_*`, `APP_BASE_URL`, `SUPER_ADMIN_ACCOUNT_IDS`, `TESTFORGE_PASSWORD`) are removed. The Jira **defect** integration (service-account token, `api/src/services/jira.ts`) is unrelated and unaffected. Azure/Entra SSO remains the eventual target and is still a drop-in via the same seam (a new caller of `issueToken`).
+
+---
+
+## ADR-009 — Pilot ships as a standalone web app on Neon + Vercel (supersedes ADR-006's Forge-native build)
+
+**Status:** Accepted (2026-06-16), pilot scope. **Supersedes ADR-006** (Forge-native / Forge SQL). The original Forge Custom UI delivery (ADR-001) and the Azure backend remain the *future* production target, not the current runtime.
+
+**Context.** ADR-006 chose a Forge-native demo (resolver functions + Forge SQL) to avoid standing up Azure. In practice the Forge dev-site provisioning, Custom-UI plan requirement, and Forge SQL's constraints (no Postgres extensions, ~25s resolver timeout) added friction without advancing the pilot, while the team already had a working Express/Prisma API and a Vite SPA. A zero-friction, publicly demoable URL was worth more than the in-tenant privacy story for the pilot stage.
+
+**Decision.** Ship the pilot as a **standalone web app**: the Vite + React SPA talks over plain HTTP (`POST /api/invoke`, Bearer session JWT) to the Express/Prisma API, backed by **Neon Postgres**, all deployed on **Vercel** (`@vercel/static-build` for the SPA, `@vercel/node` for the API — see `vercel.json`). The Prisma schema is now the **live** store, not a "reference." The frontend keeps three modes behind one `invokeResolver` contract — `web` (the pilot), `standalone` (in-browser mock), and a now-vestigial Forge bridge.
+
+**Why.** Reuses the already-built Express/Prisma backend; a single `git push` deploys both halves; Neon gives a real Postgres (extensions, no resolver timeout) so nothing in the data/AI roadmap is constrained by Forge SQL; and the app gets a shareable URL for stakeholder demos without a Jira dev site.
+
+**Consequences.** The Forge layer (`forge-app/src/` resolver + store + duplicate domain types + seed + webhook handler, `manifest.yml`, `forge-deploy.yml`, the `@forge/bridge` path) becomes **dead code pending removal** — tracked in the backlog. The `api-deploy.yml` (Azure) and `forge-deploy.yml` workflows are **dormant**. Several pre-pivot docs (README, CLAUDE.md, PRD §9, brief, ADR-006) describe architectures that no longer match the runtime; **`STATUS.md` is the new authoritative current-state doc** and supersedes them where they disagree. Migrating to the Azure + Entra/AD production target is documented in `docs/AZURE-AD-MIGRATION.md`.

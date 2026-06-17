@@ -1,54 +1,58 @@
 # TestForge
 
-Jira-native test case management for Everstory — replaces Excel-based test tracking with a structured, versioned, AI-assisted platform embedded in Jira Cloud.
+Jira-adjacent test case management for Everstory — replaces Excel-based test tracking with a structured, versioned platform.
 
-This repository is a monorepo with two packages:
+> **⚠️ Read [STATUS.md](STATUS.md) first.** The project pivoted twice; several docs below describe earlier (Forge / Azure) architectures that are no longer how the app runs. STATUS.md is the authoritative current-state description.
 
-- [forge-app/](forge-app/) — Atlassian **Forge Custom UI** app (React 18 + Atlassian Design System), rendered inside Jira Cloud.
-- [api/](api/) — Node 20 + TypeScript + Express + Prisma backend, deployed to Azure App Service against Azure PostgreSQL.
+## What it is today (pilot)
 
-The Forge frontend calls a resolver in the Forge runtime; the resolver calls the Azure API via `@forge/api` `fetch()` (egress-allowlisted). The internal secret and `accountId` are attached in the resolver, never in the browser.
+A **standalone web app** deployed on **Vercel**:
+
+- **Frontend** — a Vite + React 18 SPA (Atlassian Design System spinner aside, custom-styled). Source at [forge-app/static/frontend/](forge-app/static/frontend/). *(The `forge-app/` nesting is historical — it is not a Forge app today; see STATUS.md.)*
+- **Backend** — Node 20 + TypeScript + Express + Prisma, run as a Vercel serverless function ([api/](api/)).
+- **Database** — **Neon Postgres** (Azure Postgres is the future production target).
+
+The SPA calls the API over HTTP (`POST /api/invoke`) with a Bearer **session JWT**; auth is app-managed email + password (admin-provisioned accounts). See [DECISIONS.md](DECISIONS.md) ADR-008/009.
 
 ## Documents
 
-- [CLAUDE.md](CLAUDE.md) — **start here.** Authoritative invariants and dev workflow; supersedes the originals where they disagree.
-- [DECISIONS.md](DECISIONS.md) — ADRs for the load-bearing choices (Custom UI, v1 auth, model selection, native fetch, displayId).
-- [everstory_testcase_prd.md](everstory_testcase_prd.md) — full PRD (v1.2).
-- [testforge_claude_code_brief.md](testforge_claude_code_brief.md) — phased Claude Code build prompts (v1.1).
-- [api/AZURE_SETUP.md](api/AZURE_SETUP.md) — Azure CLI provisioning steps.
+- [STATUS.md](STATUS.md) — **start here.** Authoritative as-built state.
+- [DECISIONS.md](DECISIONS.md) — ADRs for the load-bearing choices (incl. ADR-009, the Neon/Vercel pivot).
+- [docs/AZURE-AD-MIGRATION.md](docs/AZURE-AD-MIGRATION.md) — forward-looking Azure + Entra/AD migration guide.
+- [docs/REVIEW-AND-REMEDIATION-BACKLOG.md](docs/REVIEW-AND-REMEDIATION-BACKLOG.md) — prioritized backlog.
+- [CLAUDE.md](CLAUDE.md) — working invariants (some now historical — STATUS.md flags which).
+- [everstory_testcase_prd.md](everstory_testcase_prd.md) / [testforge_claude_code_brief.md](testforge_claude_code_brief.md) — original PRD (v1.2) and build brief (v1.1); **point-in-time, pre-pivot**.
 
 ## Local development
 
-A local Postgres + the API can be brought up with zero cloud credentials. The Forge tunnel/deploy needs an Atlassian dev site on a Custom-UI-capable plan.
+The API runs against any Postgres (local Docker or a Neon branch) with no other cloud credentials; only `DATABASE_URL` is required to boot.
 
 ```bash
-# Postgres (Docker)
+# Option A: local Postgres (Docker)
 docker run --name testforge-pg -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=testforge -p 5432:5432 -d postgres:16
 
 # API
 cd api
-cp .env.example .env.local       # fill DATABASE_URL + TESTFORGE_INTERNAL_SECRET
+cp .env.example .env.local        # fill DATABASE_URL + TESTFORGE_INTERNAL_SECRET
 npm install
 npm run db:migrate
-npm run dev                       # http://localhost:3001/health
+npm run dev                        # http://localhost:3001/health
 
-# Forge app (after `npm i -g @forge/cli` and `forge login`)
-cd ../forge-app
+# Frontend (standalone Vite SPA)
+cd ../forge-app/static/frontend
 npm install
-forge lint
-# forge tunnel   # needs a Custom-UI-capable Jira dev site
+npm run dev                        # http://localhost:3000  (mock data, no backend)
 ```
+
+The frontend has three runtime modes (see [client.ts](forge-app/static/frontend/src/api/client.ts)): `web` (HTTP to the API — the pilot), `standalone` (in-browser mock data, the `npm run dev` default), and a legacy Forge-bridge mode (vestigial, pending removal).
 
 ## Deployment
 
-Two GitHub Actions workflows in [.github/workflows/](.github/workflows/):
+The live pilot deploys on **Vercel** (frontend static build + serverless API) per [vercel.json](vercel.json); the database is **Neon** ([.neon](.neon)).
 
-- `api-deploy.yml` — builds `api/` and deploys to Azure App Service (`azure/webapps-deploy@v3`). Requires repo secrets `AZURE_WEBAPP_PUBLISH_PROFILE` and `AZURE_WEBAPP_NAME`.
-- `forge-deploy.yml` — runs `forge deploy` on push to `main` for changes under `forge-app/`. Requires `FORGE_EMAIL` and `FORGE_API_TOKEN` secrets.
-
-See [api/AZURE_SETUP.md](api/AZURE_SETUP.md) for Azure resource provisioning.
+The `.github/workflows/` contain an **Azure** App Service deploy (`api-deploy.yml`) and a **Forge** deploy (`forge-deploy.yml`). Both are **dormant** — they target the original/future architecture, not the current Vercel pilot. See [docs/AZURE-AD-MIGRATION.md](docs/AZURE-AD-MIGRATION.md) and [api/AZURE_SETUP.md](api/AZURE_SETUP.md) for the eventual Azure path.
 
 ## Status
 
-**Foundation (Phase 0–1)** — scaffold, schema, API skeleton, Forge Custom UI shell. Buildable offline. Feature phases (repository, plans, execution, AI, vendor tracker, dashboard) follow per the corrected build sequence in [CLAUDE.md](CLAUDE.md).
+Pilot. Core flows (author → run → QC → approve → report) are implemented end to end. Known gaps and the prioritized cleanup are tracked in [docs/REVIEW-AND-REMEDIATION-BACKLOG.md](docs/REVIEW-AND-REMEDIATION-BACKLOG.md).

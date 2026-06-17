@@ -129,10 +129,12 @@ enum AIAnalysisType {
 
 model UserRole {
   id                 String   @id @default(uuid())
-  // Stable internal account id — the JWT subject and the value stored in every
+  // Stable internal subject id — the JWT subject and the value stored in every
   // ownerAccountId / assignedToAccountId field. App-managed users get a
-  // generated UUID here (the column name is historical; not Atlassian-specific).
-  atlassianAccountId String   @unique
+  // generated UUID here. This is the seam a future Entra/AD `oid` will occupy
+  // (see docs/AZURE-AD-MIGRATION.md). Renamed from atlassianAccountId, which was
+  // misleading — there is no Atlassian account behind it.
+  subjectId          String   @unique
   displayName        String
   // Login identifier for app-managed (email + password) authentication.
   email              String   @unique

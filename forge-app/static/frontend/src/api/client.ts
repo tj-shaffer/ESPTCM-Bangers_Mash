@@ -1,14 +1,15 @@
 /**
- * Backend client with three interchangeable modes (same invokeResolver API):
+ * Backend client with two interchangeable modes (same invokeResolver API):
  *
  *   - WEB (VITE_API_MODE=web): HTTP to the Express/Neon API at /api/invoke,
  *     Bearer-token auth (the Vercel deployment). This is the pilot.
- *   - STANDALONE (opened directly in a browser tab, no Jira, not web): the
- *     in-browser mock store — UI demo with no backend.
- *   - FORGE (inside a Jira iframe): @forge/bridge invoke() → resolver.
+ *   - STANDALONE (anything else, e.g. `npm run dev`): the in-browser mock store
+ *     — an offline UI preview with no backend. Note: the mock only implements
+ *     the repository (`repo.*`) keys, so standalone mode surfaces just the
+ *     Repository view (see App.tsx nav gating + mock/mockInvoke.ts).
  *
- * @forge/bridge is imported lazily and only in FORGE mode (importing it in a
- * plain tab can crash the app).
+ * The legacy Forge-bridge mode was removed with the rest of the Forge layer
+ * (DECISIONS.md ADR-009); the app is a standalone web app, not a Forge app.
  */
 
 import { mockInvoke } from '../mock/mockInvoke';
@@ -16,15 +17,7 @@ import { mockInvoke } from '../mock/mockInvoke';
 const WEB = import.meta.env.VITE_API_MODE === 'web';
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 
-function isStandalone(): boolean {
-  try {
-    return typeof window !== 'undefined' && window.self === window.top;
-  } catch {
-    return false;
-  }
-}
-
-export const STANDALONE = isStandalone() && !WEB;
+export const STANDALONE = !WEB;
 export const WEB_MODE = WEB;
 
 // ---------- token + auth (web mode) ----------
@@ -117,20 +110,7 @@ async function httpInvoke<T>(key: string, payload: Record<string, unknown>): Pro
   return (text ? JSON.parse(text) : null) as T;
 }
 
-// ---------- Forge bridge (lazy) ----------
-
-type InvokeFn = <T>(key: string, payload?: unknown) => Promise<T>;
-let invokePromise: Promise<InvokeFn> | null = null;
-function getBridgeInvoke(): Promise<InvokeFn> {
-  if (!invokePromise) {
-    invokePromise = import('@forge/bridge').then((m) => m.invoke as unknown as InvokeFn);
-  }
-  return invokePromise;
-}
-
 export async function invokeResolver<T>(key: string, payload?: Record<string, unknown>): Promise<T> {
   if (WEB) return httpInvoke<T>(key, payload ?? {});
-  if (STANDALONE) return mockInvoke<T>(key, payload ?? {});
-  const invoke = await getBridgeInvoke();
-  return invoke<T>(key, payload ?? {});
+  return mockInvoke<T>(key, payload ?? {});
 }

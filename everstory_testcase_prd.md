@@ -4,6 +4,9 @@
 **Author:** Second 9 Labs, LLC (on behalf of Everstory IT)  
 **Date:** May 2026  
 **Status:** Approved — Ready for Development  
+
+> **⚠️ POINT-IN-TIME (pre-pivot).** This PRD describes the original Forge Custom UI + Azure design. The pilot has since shipped as a standalone Vite SPA + Express/Prisma API on Neon/Vercel (DECISIONS.md ADR-009). For the actual as-built architecture, see [STATUS.md](STATUS.md), which supersedes this document where they disagree. The product requirements (roles, repository, execution, reporting, defect linkage) remain valid; the **hosting/architecture** sections (esp. §9) do not.
+
 **Changelog v1.2:** Technical corrections applied during implementation kickoff — Anthropic model is now env-driven (`ANTHROPIC_MODEL`, default `claude-sonnet-4-6`) rather than a pinned legacy snapshot; §11.1 auth corrected to the actual v1 trust boundary (shared internal secret) with Forge remote-invocation JWT verification slated for Sprint 2; removed the non-existent `@atlassian/jira-rest-api-client` dependency and `node-fetch` (Node 20 has native `fetch`); Jira issue search targets `/rest/api/3/search/jql`.  
 **Changelog v1.1:** Open questions resolved; market/region scope deferred to Phase 2; Vendor Change Tracker promoted to Week 1 demo; timeline confirmed aggressive-go.
 

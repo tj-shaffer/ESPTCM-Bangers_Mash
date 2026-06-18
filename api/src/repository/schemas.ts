@@ -167,6 +167,26 @@ export const schemas = {
     note: z.string().optional(),
   }),
 
+  // suites (reusable case sets)
+  'suite.list': z.object({ projectKey: z.string().optional() }),
+  'suite.get': z.object({ id: req('Suite id is required') }),
+  'suite.create': z.object({
+    name: req('Suite name is required'),
+    description: z.string().optional(),
+    caseIds: z.array(z.string()).min(1, 'Select at least one test case'),
+  }),
+  'suite.update': z.object({
+    id: req('Suite id is required'),
+    patch: z
+      .object({
+        name: z.string().optional(),
+        description: z.string().optional(),
+        caseIds: z.array(z.string()).optional(),
+      })
+      .optional(),
+  }),
+  'suite.delete': z.object({ id: req('Suite id is required') }),
+
   // execution steps / attachments / defects
   'exec.setStep': z.object({
     executionId: req('executionId and stepResultId are required'),

@@ -347,7 +347,7 @@ export function TestCaseEditor({
             Steps ({form.steps.length})
           </label>
           <button className="esp-btn esp-btn-secondary" onClick={addStep}>
-            + Add step
+            <Icon name="plus" /> Add step
           </button>
         </div>
 
@@ -402,6 +402,18 @@ export function TestCaseEditor({
             </label>
           </div>
         ))}
+
+        {/* Steps build downward — repeat the add control at the bottom so adding
+            a step after a long list doesn't mean scrolling back to the header. */}
+        {form.steps.length > 0 ? (
+          <button
+            className="esp-btn esp-btn-secondary"
+            style={{ width: '100%', justifyContent: 'center' }}
+            onClick={addStep}
+          >
+            <Icon name="plus" /> Add step
+          </button>
+        ) : null}
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>

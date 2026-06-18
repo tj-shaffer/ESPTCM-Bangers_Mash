@@ -157,6 +157,25 @@ export async function dispatch(
     case 'package.delete':
       return { deleted: await store.deletePackage(parse(key, payload).id) };
 
+    case 'suite.list':
+      return store.listSuites(parse(key, payload).projectKey);
+
+    case 'suite.create':
+      return store.createSuite(parse(key, payload), accountId);
+
+    case 'suite.get':
+      return store.getSuite(parse(key, payload).id);
+
+    case 'suite.update': {
+      const { id, patch } = parse(key, payload);
+      const updated = await store.updateSuite(id, patch ?? {});
+      if (!updated) throw new DispatchError('Suite not found', 404);
+      return updated;
+    }
+
+    case 'suite.delete':
+      return { deleted: await store.deleteSuite(parse(key, payload).id) };
+
     case 'package.signOff': {
       // Package-level in-app approval (manager-gated). A package can be signed
       // off once at least one member run is QC'd to READY_FOR_APPROVAL. See

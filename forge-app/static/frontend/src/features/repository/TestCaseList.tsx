@@ -12,6 +12,8 @@ interface BulkActions {
   onSetStatus: (ids: string[], status: TestCaseStatus) => Promise<void>;
   /** Start a run from the selected cases (handoff into execution). */
   onRun?: (ids: string[]) => void;
+  /** Save the selected cases as a reusable suite. */
+  onSaveSuite?: (ids: string[]) => void;
   busy?: boolean;
 }
 
@@ -91,6 +93,16 @@ export function TestCaseList({ cases, selectedId, onSelect, bulk }: Props) {
               title="Start a test run from the selected cases"
             >
               <Icon name="play" /> Run selected
+            </button>
+          ) : null}
+          {bulk.onSaveSuite ? (
+            <button
+              className="esp-btn esp-btn-secondary"
+              disabled={bulk.busy}
+              onClick={() => bulk.onSaveSuite!(ids())}
+              title="Save the selected cases as a reusable suite you can run later"
+            >
+              <Icon name="copy" /> Save as suite
             </button>
           ) : null}
           <select

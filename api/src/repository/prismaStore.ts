@@ -12,6 +12,7 @@ import type {
   CreateFolderInput,
   CreatePackageInput,
   CreateRunInput,
+  CreateSuiteInput,
   CreateTestCaseInput,
   DashboardData,
   DashboardFilters,
@@ -32,6 +33,8 @@ import type {
   RunStage,
   SignOffInput,
   StepResultPatch,
+  SuiteDetail,
+  SuiteSummary,
   TestCase,
   TestCaseStatus,
   TestCaseSummary,
@@ -42,6 +45,7 @@ import type {
   TestStepInput,
   TestType,
   UpdateRunInput,
+  UpdateSuiteInput,
   UpdateTestCaseInput,
   VendorCode,
   VendorResult,
@@ -687,6 +691,113 @@ export class PrismaStore implements TestCaseStore {
       }),
     ]);
     return this.getPackage(id);
+  }
+
+  // ---------- suites (reusable case sets) ----------
+
+  async listSuites(projectKey = DEFAULT_PROJECT): Promise<SuiteSummary[]> {
+    const suites = await prisma.suite.findMany({
+      where: { projectKey },
+      include: { _count: { select: { cases: true } } },
+      orderBy: { updatedAt: 'desc' },
+    });
+    return suites.map((s) => ({
+      id: s.id,
+      displayId: s.displayId,
+      name: s.name,
+      description: s.description ?? undefined,
+      caseCount: (s as unknown as { _count: { cases: number } })._count.cases,
+      createdAt: s.createdAt.toISOString(),
+      updatedAt: s.updatedAt.toISOString(),
+    }));
+  }
+
+  async getSuite(id: string): Promise<SuiteDetail | null> {
+    const suite = await prisma.suite.findUnique({
+      where: { id },
+      include: {
+        cases: {
+          orderBy: { order: 'asc' },
+          include: { testCase: { include: { _count: { select: { steps: true } } } } },
+        },
+      },
+    });
+    if (!suite) return null;
+    // Only surface cases that still exist; SuiteCase cascades on case delete, so
+    // this is mostly belt-and-suspenders.
+    const cases: TestCaseSummary[] = suite.cases
+      .filter((sc) => sc.testCase)
+      .map((sc) => {
+        const c = sc.testCase as unknown as CaseRow & { _count: { steps: number } };
+        return {
+          id: c.id,
+          displayId: c.displayId,
+          title: c.title,
+          testType: c.testType as TestType,
+          priority: c.priority as Priority,
+          status: c.status as TestCaseStatus,
+          vendors: c.vendors as VendorCode[],
+          folderId: c.folderId,
+          stepCount: c._count.steps,
+          updatedAt: c.updatedAt.toISOString(),
+        };
+      });
+    return {
+      id: suite.id,
+      displayId: suite.displayId,
+      name: suite.name,
+      description: suite.description ?? undefined,
+      caseCount: cases.length,
+      createdAt: suite.createdAt.toISOString(),
+      updatedAt: suite.updatedAt.toISOString(),
+      cases,
+    };
+  }
+
+  async createSuite(input: CreateSuiteInput, owner: string, projectKey = DEFAULT_PROJECT): Promise<SuiteDetail> {
+    const caseIds = await this.existingCaseIds(input.caseIds);
+    const suite = await prisma.suite.create({
+      data: {
+        name: input.name.trim() || 'Untitled suite',
+        description: input.description?.trim() ? input.description : null,
+        ownerAccountId: owner,
+        projectKey,
+        cases: { create: caseIds.map((testCaseId, i) => ({ testCaseId, order: i })) },
+      },
+    });
+    return (await this.getSuite(suite.id)) as SuiteDetail;
+  }
+
+  async updateSuite(id: string, patch: UpdateSuiteInput): Promise<SuiteDetail | null> {
+    const existing = await prisma.suite.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return null;
+    const data: Prisma.SuiteUpdateInput = {};
+    if (patch.name !== undefined) data.name = patch.name.trim() || 'Untitled suite';
+    if (patch.description !== undefined) data.description = patch.description?.trim() ? patch.description : null;
+    if (patch.caseIds !== undefined) {
+      const caseIds = await this.existingCaseIds(patch.caseIds);
+      data.cases = { deleteMany: {}, create: caseIds.map((testCaseId, i) => ({ testCaseId, order: i })) };
+    }
+    await prisma.suite.update({ where: { id }, data });
+    return this.getSuite(id);
+  }
+
+  async deleteSuite(id: string): Promise<boolean> {
+    try {
+      await prisma.suite.delete({ where: { id } }); // SuiteCase rows cascade
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** De-dupe + drop ids that don't resolve to a real case, preserving order. */
+  private async existingCaseIds(ids: string[]): Promise<string[]> {
+    const unique = [...new Set(ids)];
+    if (unique.length === 0) return [];
+    const found = await prisma.testCase.findMany({ where: { id: { in: unique } }, select: { id: true } });
+    const ok = new Set(found.map((c) => c.id));
+    return unique.filter((id) => ok.has(id));
   }
 
   async getExecution(id: string): Promise<ExecutionDetail | null> {

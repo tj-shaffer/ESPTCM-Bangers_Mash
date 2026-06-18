@@ -201,6 +201,7 @@ model TestCase {
   versions         TestCaseVersion[]
   cycleAssignments CycleAssignment[]
   executions       TestExecution[]
+  suiteCases       SuiteCase[]
 
   @@index([folderId])
   @@index([status])
@@ -326,6 +327,40 @@ model Package {
 
   @@index([projectKey])
   @@map("packages")
+}
+
+// A Suite is a named, reusable, cross-folder selection of test cases that can be
+// run on demand. Unlike a Package (a bundle of runs for approval), a Suite has no
+// QC stage / status / sign-off — it's purely an authoring-side saved case set.
+model Suite {
+  id             String      @id @default(uuid())
+  // Human-facing monotonic id — rendered as SUITE-XXXX.
+  displayId      Int         @unique @default(autoincrement())
+  name           String
+  description    String?
+  ownerAccountId String
+  projectKey     String
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  cases SuiteCase[]
+
+  @@index([projectKey])
+  @@map("suites")
+}
+
+// Ordered membership join: a case can belong to many suites.
+model SuiteCase {
+  id         String   @id @default(uuid())
+  suiteId    String
+  suite      Suite    @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  testCaseId String
+  testCase   TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  order      Int
+
+  @@unique([suiteId, testCaseId])
+  @@index([suiteId])
+  @@map("suite_cases")
 }
 
 model TestCycle {

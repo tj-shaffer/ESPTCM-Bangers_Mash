@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Spinner from '@atlaskit/spinner';
-import type { Environment, FolderNode, TestCaseStatus, TestCaseSummary } from '../../domain/types';
-import { ENVIRONMENTS, TEAM_MEMBERS } from '../../domain/types';
+import type { Environment, FolderNode, SuiteDetail, TestCaseStatus, TestCaseSummary } from '../../domain/types';
+import { ENVIRONMENTS, suiteId, TEAM_MEMBERS } from '../../domain/types';
 import {
   useCase,
   useCases,
@@ -16,6 +16,7 @@ import {
   useUpdateCase,
 } from '../../api/repository';
 import { useCreateRun, usePackages } from '../../api/runs';
+import { useSuites, useSuite, useCreateSuite, useDeleteSuite } from '../../api/suites';
 import { FolderTree } from './FolderTree';
 import { TestCaseList } from './TestCaseList';
 import { TestCaseEditor } from './TestCaseEditor';
@@ -72,6 +73,10 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
     defaultName: string;
     mode: 'folder' | 'selected';
   } | null>(null);
+  // Save-as-suite modal carries the selected case ids; Suites modal is the
+  // browse/run/delete surface for saved suites.
+  const [saveSuiteIds, setSaveSuiteIds] = useState<string[] | null>(null);
+  const [showSuites, setShowSuites] = useState(false);
 
   const auth = useAuth();
   const canAuthor = auth.can('repo.createCase');
@@ -86,6 +91,7 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
   const deleteCase = useDeleteCase();
   const duplicateCase = useDuplicateCase();
   const createFolder = useCreateFolder();
+  const createSuite = useCreateSuite();
 
   // Auto-select a sensible default folder once the tree loads — unless a case is
   // deep-linked, in which case the effect below opens that case's folder.
@@ -223,6 +229,11 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
     setRunModal(null);
     window.location.hash = `runs/${runId}`;
   };
+  // Run a saved suite — open the same Start-a-run modal pre-filled with its cases.
+  const runSuite = (suite: SuiteDetail) => {
+    setShowSuites(false);
+    setRunModal({ candidates: suite.cases, defaultName: `${suite.name} — ${new Date().toLocaleDateString()}`, mode: 'selected' });
+  };
 
   if (tree.isLoading) {
     return (
@@ -240,11 +251,22 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
       <aside className="esp-sidebar">
         <div className="esp-sidebar-head">
           <span className="esp-sidebar-title">Repository</span>
-          {canAuthor ? (
-            <button className="esp-btn esp-btn-ghost" onClick={() => setShowNewFolder(true)} title="New folder">
-              + Folder
-            </button>
-          ) : null}
+          <div style={{ display: 'flex', gap: 2 }}>
+            {canRun ? (
+              <button
+                className="esp-btn esp-btn-ghost"
+                onClick={() => setShowSuites(true)}
+                title="Browse and run saved suites (reusable case sets)"
+              >
+                <Icon name="copy" /> Suites
+              </button>
+            ) : null}
+            {canAuthor ? (
+              <button className="esp-btn esp-btn-ghost" onClick={() => setShowNewFolder(true)} title="New folder">
+                + Folder
+              </button>
+            ) : null}
+          </div>
         </div>
         <input
           className="esp-input"
@@ -335,6 +357,7 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
                       onDelete: handleBulkDelete,
                       onSetStatus: handleBulkSetStatus,
                       onRun: canRun ? openRunSelected : undefined,
+                      onSaveSuite: (ids) => setSaveSuiteIds(ids),
                       busy: deleteCase.isPending || updateCase.isPending,
                     }
                   : undefined
@@ -419,6 +442,29 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
             flashToast(parentId ? 'Folder created' : 'Top-level folder created');
           }}
         />
+      ) : null}
+
+      {saveSuiteIds ? (
+        <SaveSuiteModal
+          count={saveSuiteIds.length}
+          onClose={() => setSaveSuiteIds(null)}
+          onSave={(name, description) => {
+            createSuite.mutate(
+              { name, description: description || undefined, caseIds: saveSuiteIds },
+              {
+                onSuccess: () => {
+                  setSaveSuiteIds(null);
+                  flashToast(`Saved suite “${name.trim()}”`);
+                },
+              },
+            );
+          }}
+          busy={createSuite.isPending}
+        />
+      ) : null}
+
+      {showSuites ? (
+        <SuitesModal canAuthor={canAuthor} onClose={() => setShowSuites(false)} onRun={runSuite} />
       ) : null}
 
       {toast ? <Toast message={toast} /> : null}
@@ -525,17 +571,22 @@ function StartRunModal({
           </datalist>
         </div>
       </div>
-      <div className="esp-field">
-        <label className="esp-label">Add to package (optional)</label>
-        <select className="esp-select" value={packageId} onChange={(e) => setPackageId(e.target.value)}>
-          <option value="">No package</option>
-          {(packages.data ?? []).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* Packages bundle existing runs for approval — only meaningful once some
+          exist, so we hide this for the common first-run case to avoid confusion.
+          Packages are assembled from the Pipeline board. */}
+      {(packages.data ?? []).length > 0 ? (
+        <div className="esp-field">
+          <label className="esp-label">Add to package (optional)</label>
+          <select className="esp-select" value={packageId} onChange={(e) => setPackageId(e.target.value)}>
+            <option value="">No package</option>
+            {(packages.data ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
       {mode === 'folder' && nonActiveCount > 0 ? (
         <label className="esp-pick-row" style={{ marginBottom: 6 }}>
           <input type="checkbox" checked={includeDrafts} onChange={(e) => setIncludeDrafts(e.target.checked)} />
@@ -624,6 +675,148 @@ function NewFolderModal({
           }}
         />
       </div>
+    </Modal>
+  );
+}
+
+/** Name + (optional) describe a new suite from the selected cases. */
+function SaveSuiteModal({
+  count,
+  onClose,
+  onSave,
+  busy,
+}: {
+  count: number;
+  onClose: () => void;
+  onSave: (name: string, description: string) => void;
+  busy: boolean;
+}) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const canSave = name.trim().length > 0 && !busy;
+  return (
+    <Modal
+      title="Save as suite"
+      maxWidth={460}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="esp-btn esp-btn-secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button className="esp-btn esp-btn-primary" disabled={!canSave} onClick={() => onSave(name, description)}>
+            {busy ? 'Saving…' : 'Save suite'}
+          </button>
+        </>
+      }
+    >
+      <p className="esp-muted" style={{ fontSize: 13, marginTop: 0 }}>
+        A suite is a reusable set of {count} test case{count === 1 ? '' : 's'} you can run again anytime — across folders.
+      </p>
+      <div className="esp-field">
+        <label className="esp-label">Suite name</label>
+        <input
+          className="esp-input"
+          autoFocus
+          placeholder="e.g. Cross-vendor smoke"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && canSave) onSave(name, description);
+          }}
+        />
+      </div>
+      <div className="esp-field" style={{ marginBottom: 0 }}>
+        <label className="esp-label">Description (optional)</label>
+        <textarea
+          className="esp-textarea"
+          style={{ minHeight: 44 }}
+          placeholder="What this suite covers"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+      </div>
+    </Modal>
+  );
+}
+
+/** Browse saved suites; run one (pre-fills the run modal) or delete it. */
+function SuitesModal({
+  canAuthor,
+  onClose,
+  onRun,
+}: {
+  canAuthor: boolean;
+  onClose: () => void;
+  onRun: (suite: SuiteDetail) => void;
+}) {
+  const suites = useSuites();
+  const deleteSuite = useDeleteSuite();
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const running = useSuite(runningId);
+
+  // Once the picked suite's detail (its cases) loads, hand off to the run modal.
+  useEffect(() => {
+    if (runningId && running.data) {
+      onRun(running.data);
+      setRunningId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runningId, running.data]);
+
+  const list = suites.data ?? [];
+  return (
+    <Modal
+      title="Suites"
+      maxWidth={520}
+      onClose={onClose}
+      footer={
+        <button className="esp-btn esp-btn-secondary" onClick={onClose}>
+          Close
+        </button>
+      }
+    >
+      <p className="esp-muted" style={{ fontSize: 13, marginTop: 0 }}>
+        Reusable sets of test cases. Select cases in the repository and “Save as suite” to create one.
+      </p>
+      {suites.isLoading ? (
+        <div className="esp-spinner-wrap"><Spinner size="medium" /></div>
+      ) : list.length === 0 ? (
+        <div className="esp-empty">No suites yet.</div>
+      ) : (
+        <div className="esp-list" style={{ padding: 0 }}>
+          {list.map((s) => (
+            <div key={s.id} className="esp-case-row" style={{ cursor: 'default' }}>
+              <span className="esp-case-id" style={{ width: 'auto' }}>{suiteId(s.displayId)}</span>
+              <div className="esp-case-main">
+                <div className="esp-case-title">{s.name}</div>
+                <div className="esp-case-meta">
+                  <span>{s.caseCount} case{s.caseCount === 1 ? '' : 's'}</span>
+                  {s.description ? <span>· {s.description}</span> : null}
+                </div>
+              </div>
+              <button
+                className="esp-btn esp-btn-primary"
+                disabled={running.isFetching && runningId === s.id}
+                onClick={() => setRunningId(s.id)}
+                title="Start a run from this suite"
+              >
+                <Icon name="play" /> Run
+              </button>
+              {canAuthor ? (
+                <button
+                  className="esp-btn esp-btn-danger"
+                  disabled={deleteSuite.isPending}
+                  onClick={() => deleteSuite.mutate(s.id)}
+                  title="Delete suite"
+                >
+                  <Icon name="trash" />
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
     </Modal>
   );
 }

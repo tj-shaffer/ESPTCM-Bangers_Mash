@@ -12,6 +12,7 @@ import type {
   CreateFolderInput,
   CreatePackageInput,
   CreateRunInput,
+  CreateSuiteInput,
   CreateTestCaseInput,
   DashboardData,
   DashboardFilters,
@@ -26,12 +27,15 @@ import type {
   RunStage,
   SignOffInput,
   StepResultPatch,
+  SuiteDetail,
+  SuiteSummary,
   TestCase,
   TestCaseSummary,
   TestFolder,
   TestRunDetail,
   TestRunSummary,
   UpdateRunInput,
+  UpdateSuiteInput,
   UpdateTestCaseInput,
 } from '../domain/types';
 
@@ -77,6 +81,12 @@ export interface TestCaseStore {
   getPackage(id: string): Promise<PackageDetail | null>;
   deletePackage(id: string): Promise<boolean>;
   signOffPackage(id: string, input: SignOffInput): Promise<PackageDetail | null>;
+
+  listSuites(projectKey?: string): Promise<SuiteSummary[]>;
+  createSuite(input: CreateSuiteInput, ownerAccountId: string, projectKey?: string): Promise<SuiteDetail>;
+  getSuite(id: string): Promise<SuiteDetail | null>;
+  updateSuite(id: string, patch: UpdateSuiteInput): Promise<SuiteDetail | null>;
+  deleteSuite(id: string): Promise<boolean>;
   getExecution(id: string): Promise<ExecutionDetail | null>;
   getStepResultGate(stepResultId: string): Promise<StepResultGate | null>;
   setStepResult(executionId: string, stepResultId: string, patch: StepResultPatch): Promise<ExecutionDetail | null>;

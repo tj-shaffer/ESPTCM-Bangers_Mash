@@ -33,6 +33,8 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'run.get': ALL,
   'package.list': ALL,
   'package.get': ALL,
+  'suite.list': ALL,
+  'suite.get': ALL,
   'exec.get': ALL,
   'attachment.get': ALL,
   'report.dashboard': ALL,
@@ -70,6 +72,9 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'run.delete': AUTHOR,
   'package.create': AUTHOR,
   'package.delete': AUTHOR,
+  'suite.create': AUTHOR,
+  'suite.update': AUTHOR,
+  'suite.delete': AUTHOR,
 
   // ---------- account (any authenticated user, incl. OBSERVER) ----------
   'account.changePassword': ALL,

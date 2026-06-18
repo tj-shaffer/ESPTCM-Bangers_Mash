@@ -29,6 +29,8 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'jira.check': ALL,
   'jira.options': ALL,
   'jira.search': ALL,
+  'suite.list': ALL,
+  'suite.get': ALL,
 
   'exec.setStep': EXECUTE,
   'exec.addAttachment': EXECUTE,
@@ -53,6 +55,9 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'run.delete': AUTHOR,
   'package.create': AUTHOR,
   'package.delete': AUTHOR,
+  'suite.create': AUTHOR,
+  'suite.update': AUTHOR,
+  'suite.delete': AUTHOR,
 
   'account.changePassword': ALL,
 

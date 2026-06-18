@@ -229,6 +229,31 @@ export function pkgId(displayId: number): string {
   return `PKG-${displayId}`;
 }
 
+// ---------- suites (reusable, runnable case sets) ----------
+
+export interface CreateSuiteInput {
+  name: string;
+  description?: string;
+  /** Ordered test case ids that make up the suite. */
+  caseIds: string[];
+}
+
+export type UpdateSuiteInput = Partial<CreateSuiteInput>;
+
+export interface SuiteSummary {
+  id: string;
+  displayId: number;
+  name: string;
+  description?: string;
+  caseCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SuiteDetail extends SuiteSummary {
+  cases: TestCaseSummary[];
+}
+
 export interface RunExecutionSummary {
   id: string;
   testCaseId: string;

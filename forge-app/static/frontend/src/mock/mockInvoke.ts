@@ -27,6 +27,7 @@ import type {
   ExecutionStatus,
   ExecutionStepResultView,
   FolderNode,
+  CreateSuiteInput,
   ImportResult,
   ImportedCaseRow,
   JiraIssueSummary,
@@ -43,10 +44,13 @@ import type {
   TestFolder,
   TestRunDetail,
   TestRunSummary,
+  SuiteDetail,
+  SuiteSummary,
   TestStep,
   TestStepInput,
   TestType,
   UpdateRunInput,
+  UpdateSuiteInput,
   UpdateTestCaseInput,
   VendorCode,
 } from '../domain/types';
@@ -152,6 +156,15 @@ interface MockPackage {
   approvedAt?: string | null;
   createdAt: string;
 }
+interface MockSuite {
+  id: string;
+  displayId: number;
+  name: string;
+  description?: string;
+  caseIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
 interface MockUser {
   subjectId: string;
   displayName: string;
@@ -176,10 +189,12 @@ class MockStore {
   private runs: MockRun[] = [];
   private execs: MockExecution[] = [];
   private packages: MockPackage[] = [];
+  private suites: MockSuite[] = [];
   private users: MockUser[] = [];
   private nextCaseId: number;
   private nextRunId = 5001;
   private nextPkgId = 7001;
+  private nextSuiteId = 9001;
 
   constructor() {
     const seed = buildSeed();
@@ -722,6 +737,68 @@ class MockStore {
     return this.getPackage(id);
   }
 
+  // ---------- suites (reusable case sets) ----------
+
+  private suiteSummary(s: MockSuite): SuiteSummary {
+    return {
+      id: s.id,
+      displayId: s.displayId,
+      name: s.name,
+      description: s.description,
+      caseCount: s.caseIds.filter((id) => this.cases.some((c) => c.id === id)).length,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+    };
+  }
+
+  listSuites(): SuiteSummary[] {
+    return this.suites.map((s) => this.suiteSummary(s)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  getSuite(id: string): SuiteDetail | null {
+    const s = this.suites.find((x) => x.id === id);
+    if (!s) return null;
+    const cases = s.caseIds
+      .map((cid) => this.cases.find((c) => c.id === cid))
+      .filter((c): c is TestCase => !!c)
+      .map(toSummary);
+    return { ...this.suiteSummary(s), caseCount: cases.length, cases };
+  }
+
+  private cleanCaseIds(ids: string[]): string[] {
+    return [...new Set(ids)].filter((id) => this.cases.some((c) => c.id === id));
+  }
+
+  createSuite(input: CreateSuiteInput): SuiteDetail {
+    const s: MockSuite = {
+      id: uuid(),
+      displayId: this.nextSuiteId++,
+      name: input.name.trim() || 'Untitled suite',
+      description: input.description?.trim() || undefined,
+      caseIds: this.cleanCaseIds(input.caseIds),
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+    };
+    this.suites.push(s);
+    return this.getSuite(s.id)!;
+  }
+
+  updateSuite(id: string, patch: UpdateSuiteInput): SuiteDetail | null {
+    const s = this.suites.find((x) => x.id === id);
+    if (!s) return null;
+    if (patch.name !== undefined) s.name = patch.name.trim() || s.name;
+    if (patch.description !== undefined) s.description = patch.description?.trim() || undefined;
+    if (patch.caseIds !== undefined) s.caseIds = this.cleanCaseIds(patch.caseIds);
+    s.updatedAt = nowIso();
+    return this.getSuite(id);
+  }
+
+  deleteSuite(id: string): boolean {
+    const before = this.suites.length;
+    this.suites = this.suites.filter((s) => s.id !== id);
+    return this.suites.length < before;
+  }
+
   // ---------- dashboard / report ----------
 
   /** A folder id plus all of its descendants (for the application filter). */
@@ -923,6 +1000,16 @@ class MockStore {
     // Package grouping the UAT run.
     const pkg = this.createPackage({ name: 'June Release — End-to-end', packageType: 'UAT', runIds: [r2.id] });
     void pkg;
+
+    // An example reusable suite (a cross-folder case set) so "Run a suite" is demoable.
+    const suiteCaseIds = this.cases.slice(0, 2).map((c) => c.id);
+    if (suiteCaseIds.length > 0) {
+      this.createSuite({
+        name: 'Cross-vendor smoke',
+        description: 'Quick reusable check across vendors.',
+        caseIds: suiteCaseIds,
+      });
+    }
   }
 }
 
@@ -1157,6 +1244,18 @@ export async function mockInvoke<T>(key: string, payload: Record<string, unknown
       return { deleted: store.deletePackage(p.id) } as T;
     case 'package.signOff':
       return store.signOffPackage(p.id, { decision: p.decision, approverName: p.approverName, note: p.note }) as T;
+
+    // suites
+    case 'suite.list':
+      return store.listSuites() as T;
+    case 'suite.get':
+      return store.getSuite(p.id) as T;
+    case 'suite.create':
+      return store.createSuite(p as unknown as CreateSuiteInput) as T;
+    case 'suite.update':
+      return store.updateSuite(p.id, (p.patch ?? {}) as UpdateSuiteInput) as T;
+    case 'suite.delete':
+      return { deleted: store.deleteSuite(p.id) } as T;
 
     // execution
     case 'exec.get':

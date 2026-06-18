@@ -7,7 +7,13 @@
 export function Logo({ size = 24 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" role="img" aria-label="Bangers & Mash">
-      <rect width="48" height="48" rx="12" fill="#4F94BC" />
+      <defs>
+        <linearGradient id="bm-tile" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#4F9BD9" />
+          <stop offset="1" stopColor="#2B6CA3" />
+        </linearGradient>
+      </defs>
+      <rect width="48" height="48" rx="12" fill="url(#bm-tile)" />
       <path d="M8 40c0-9 6-13 16-13s16 4 16 13z" fill="#EAD49A" />
       <ellipse cx="17" cy="31.5" rx="4.2" ry="3" fill="#F4E4BE" />
       <ellipse cx="27" cy="30" rx="4.6" ry="3.2" fill="#F4E4BE" />

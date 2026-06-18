@@ -69,13 +69,13 @@ async function exportResults(d: DashboardData, rows: ReportRow[], scopeLabel: st
 }
 
 const STATUS_COLOR: Record<ExecutionStatus, string> = {
-  PASS: '#2E7D5B',
-  FAIL: '#C9372C',
-  BLOCKED: '#B07D1A',
-  IN_PROGRESS: '#4F94BC',
-  NOT_STARTED: '#8FA1AD',
-  SKIPPED: '#B4B2A9',
-  ENHANCEMENT: '#6B4FB8',
+  PASS: '#2E9E6B',
+  FAIL: '#D9534F',
+  BLOCKED: '#B0791A',
+  IN_PROGRESS: '#4F9BD9',
+  NOT_STARTED: '#97A6B0',
+  SKIPPED: '#C2CDD5',
+  ENHANCEMENT: '#6B4FBF',
 };
 
 export function DashboardView({ deepRunId = null }: { deepRunId?: string | null } = {}) {
@@ -253,7 +253,7 @@ export function DashboardView({ deepRunId = null }: { deepRunId?: string | null 
               <h3>Results by vendor</h3>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={d.byVendor}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#EAF5FA" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#EEF3F7" />
                   <XAxis dataKey="vendor" fontSize={12} />
                   <YAxis allowDecimals={false} fontSize={12} />
                   <Tooltip />
@@ -271,7 +271,7 @@ export function DashboardView({ deepRunId = null }: { deepRunId?: string | null 
               <h3>Results by environment</h3>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={d.byEnvironment}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#EAF5FA" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#EEF3F7" />
                   <XAxis dataKey="environment" fontSize={12} />
                   <YAxis allowDecimals={false} fontSize={12} />
                   <Tooltip />

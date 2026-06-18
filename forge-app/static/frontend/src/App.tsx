@@ -85,7 +85,7 @@ export function App() {
         </nav>
         <div className="esp-header-spacer" />
         {STANDALONE ? (
-          <span className="esp-badge" style={{ background: 'rgba(240,138,75,0.16)', color: 'var(--esp-orange-strong)' }}>
+          <span className="esp-badge" style={{ background: 'var(--esp-orange-tint)', color: 'var(--esp-orange-strong)' }}>
             Preview · mock data
           </span>
         ) : null}
@@ -99,7 +99,7 @@ export function App() {
             gap: 6,
             padding: '7px 16px',
             fontSize: 13,
-            background: 'rgba(240,138,75,0.14)',
+            background: 'var(--esp-orange-tint)',
             color: 'var(--esp-orange-strong)',
             borderBottom: '1px solid var(--esp-border)',
           }}

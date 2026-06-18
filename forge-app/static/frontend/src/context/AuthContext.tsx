@@ -117,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   if (status.error) {
     return (
-      <div style={{ padding: 16, color: '#DE350B' }}>
+      <div style={{ padding: 16, color: 'var(--esp-bad)' }}>
         Failed to initialize Bangers &amp; Mash: {status.error}
       </div>
     );

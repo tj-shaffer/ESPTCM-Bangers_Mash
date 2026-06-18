@@ -69,8 +69,11 @@ export function App() {
     <div className="esp-app">
       <header className="esp-header">
         <div className="esp-logo">
-          <Logo size={24} />
-          Bangers &amp; Mash
+          <Logo size={34} />
+          <div className="esp-brand-text">
+            <div className="esp-brand-name">Ever<b>story</b></div>
+            <div className="esp-brand-sub">Bangers &amp; Mash</div>
+          </div>
         </div>
         <nav className="esp-nav">
           {NAV.filter((n) => !n.adminOnly || isAdmin).map((n) => (

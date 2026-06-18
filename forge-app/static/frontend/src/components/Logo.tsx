@@ -1,32 +1,31 @@
 /**
- * Bangers & Mash mark: a sausage bent into a pass-check, resting on a scoop of
- * mash, in a brand-blue tile. Reads as "test passed" small, bangers & mash big.
- * Fixed brand colours (a logo shouldn't invert in dark mode).
+ * Everstory brand mark (from the Intercompany Billing design): a blue-gradient
+ * rounded tile with a white "spark" glyph and a warm-orange dot tucked into the
+ * bottom-right corner. Fixed brand colours (a logo shouldn't invert in dark mode).
  */
 
 export function Logo({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 48 48" role="img" aria-label="Bangers & Mash">
+    <svg width={size} height={size} viewBox="0 0 48 48" role="img" aria-label="Everstory">
       <defs>
         <linearGradient id="bm-tile" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
           <stop offset="0" stopColor="#4F9BD9" />
           <stop offset="1" stopColor="#2B6CA3" />
         </linearGradient>
+        <clipPath id="bm-clip">
+          <rect width="48" height="48" rx="14" />
+        </clipPath>
       </defs>
-      <rect width="48" height="48" rx="12" fill="url(#bm-tile)" />
-      <path d="M8 40c0-9 6-13 16-13s16 4 16 13z" fill="#EAD49A" />
-      <ellipse cx="17" cy="31.5" rx="4.2" ry="3" fill="#F4E4BE" />
-      <ellipse cx="27" cy="30" rx="4.6" ry="3.2" fill="#F4E4BE" />
-      <ellipse cx="34" cy="33.5" rx="3.6" ry="2.6" fill="#F4E4BE" />
-      <path
-        d="M14.5 26.5l6.5 6.5L34 16.5"
-        fill="none"
-        stroke="#C25A2A"
-        strokeWidth={6.8}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M16.3 25.4l4.6 4.6" fill="none" stroke="#EC9760" strokeWidth={2} strokeLinecap="round" />
+      <g clipPath="url(#bm-clip)">
+        <rect width="48" height="48" fill="url(#bm-tile)" />
+        <circle cx="44" cy="44" r="14" fill="#F47B3F" opacity="0.95" />
+        <g transform="translate(12 12)">
+          <path
+            d="M12 3c1.5 3.2 4.2 4.6 7 5-2 .8-3.4 2.2-4.2 4.2C13.9 18.4 12 21 12 21s-1.9-2.6-2.8-8.8C8.4 10.2 7 8.8 5 8c2.8-.4 5.5-1.8 7-5z"
+            fill="#fff"
+          />
+        </g>
+      </g>
     </svg>
   );
 }

@@ -115,18 +115,30 @@ button {
 .esp-logo {
   display: flex;
   align-items: center;
-  gap: 9px;
-  font-family: var(--esp-font-serif);
-  font-weight: 600;
-  font-size: 17px;
-  letter-spacing: -0.01em;
+  gap: 11px;
 }
 
-.esp-logo-mark {
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
-  background: linear-gradient(150deg, var(--esp-blue) 0%, var(--esp-blue-strong) 100%);
+.esp-brand-name {
+  font-family: var(--esp-font-serif);
+  font-weight: 600;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+  color: var(--esp-blue-ink);
+  line-height: 1.1;
+}
+
+.esp-brand-name b {
+  color: var(--esp-orange-strong);
+  font-weight: 600;
+}
+
+.esp-brand-sub {
+  font-size: 11px;
+  color: var(--esp-faint);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-top: -1px;
 }
 
 .esp-header-spacer {

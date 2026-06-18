@@ -62,9 +62,12 @@ function Card({ children }: { children: ReactNode }) {
           maxWidth: 360,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+        <div className="esp-logo" style={{ marginBottom: 4 }}>
           <Logo size={34} />
-          <h2 style={{ fontSize: 20 }}>Bangers &amp; Mash</h2>
+          <div className="esp-brand-text">
+            <div className="esp-brand-name">Ever<b>story</b></div>
+            <div className="esp-brand-sub">Bangers &amp; Mash</div>
+          </div>
         </div>
         {children}
       </div>

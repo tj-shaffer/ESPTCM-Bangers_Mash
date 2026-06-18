@@ -10,11 +10,17 @@ import type {
   FolderNode,
   ImportResult,
   ImportedCaseRow,
+  JiraIssueSummary,
   TestCase,
   TestCaseSummary,
   TestFolder,
   UpdateTestCaseInput,
 } from '../domain/types';
+
+/** Search Jira issues to link to a test case (empty query → no results). */
+export function searchJiraIssues(query: string): Promise<JiraIssueSummary[]> {
+  return invokeResolver<JiraIssueSummary[]>('jira.search', { query });
+}
 
 const keys = {
   tree: (projectKey?: string) => ['repo', 'folderTree', projectKey ?? 'default'] as const,

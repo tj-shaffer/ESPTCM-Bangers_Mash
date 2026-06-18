@@ -10,6 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import { EXEC_STATUS_LABEL, TEAM_MEMBERS, tcId } from '../../domain/types';
 import type { ExecutionStatus, RunExecutionSummary } from '../../domain/types';
 import { ExecBadge, ExecutionBody } from './ExecutionRunner';
+import { Icon } from '../../components/Icon';
 
 /** Cases needing attention sort first in the summary. */
 const STATUS_RANK: Record<ExecutionStatus, number> = {
@@ -134,13 +135,13 @@ function RunPlayerInner({
             View summary
           </button>
           <button className="esp-btn esp-btn-secondary" disabled={index === 0} onClick={() => setIndex(index - 1)}>
-            ← Prev
+            <Icon name="arrowLeft" /> Prev
           </button>
           <button className="esp-btn esp-btn-secondary" disabled={isLast} onClick={() => setIndex(index + 1)}>
-            Skip →
+            Skip <Icon name="arrowRight" />
           </button>
           <button className="esp-btn esp-btn-primary" disabled={complete.isPending} onClick={completeAndAdvance}>
-            {complete.isPending ? 'Saving…' : isLast ? '✓ Complete & finish' : '✓ Complete & next'}
+            {complete.isPending ? 'Saving…' : <><Icon name="check" /> {isLast ? 'Complete & finish' : 'Complete & next'}</>}
           </button>
         </>
       }
@@ -228,17 +229,7 @@ function RunSummary({
               {setStage.isPending ? 'Submitting…' : 'Hand off for QC review'}
             </button>
           ) : null}
-          <button
-            className="esp-btn esp-btn-secondary"
-            style={canHandOff ? undefined : { marginRight: 'auto' }}
-            onClick={() => {
-              window.location.hash = `dashboard/${detail.id}`;
-            }}
-            title="See this run's results in the dashboard"
-          >
-            📊 View in dashboard
-          </button>
-          <button className="esp-btn esp-btn-primary" onClick={onExit}>
+          <button className="esp-btn esp-btn-primary" style={canHandOff ? undefined : { marginLeft: 'auto' }} onClick={onExit}>
             Done
           </button>
         </>
@@ -291,7 +282,11 @@ function AssigneeControl({ runId, assigneeName }: { runId: string; assigneeName:
   const [val, setVal] = useState(assigneeName);
 
   if (!auth.can('run.update')) {
-    return assigneeName ? <span className="esp-muted" style={{ fontSize: 12 }}>👤 {assigneeName}</span> : null;
+    return assigneeName ? (
+      <span className="esp-muted" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <Icon name="user" size={13} /> {assigneeName}
+      </span>
+    ) : null;
   }
 
   const save = () => {
@@ -301,7 +296,7 @@ function AssigneeControl({ runId, assigneeName }: { runId: string; assigneeName:
 
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-      <span className="esp-muted" style={{ fontSize: 12 }}>👤</span>
+      <span className="esp-muted" style={{ fontSize: 12, display: 'inline-flex' }}><Icon name="user" size={13} /></span>
       <input
         className="esp-input"
         list="esp-team-members-player"

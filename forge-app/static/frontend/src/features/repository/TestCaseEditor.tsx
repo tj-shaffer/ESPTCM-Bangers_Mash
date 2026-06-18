@@ -15,13 +15,16 @@ import {
 } from '../../domain/types';
 import type {
   CreateTestCaseInput,
+  JiraIssueSummary,
   Priority,
   TestCase,
   TestCaseStatus,
   TestType,
   VendorCode,
 } from '../../domain/types';
+import { searchJiraIssues } from '../../api/repository';
 import { Field } from '../../components/ui';
+import { Icon } from '../../components/Icon';
 
 interface StepDraft {
   _key: number;
@@ -39,6 +42,7 @@ interface FormState {
   priority: Priority;
   status: TestCaseStatus;
   vendors: VendorCode[];
+  jiraStoryKeys: string[];
   steps: StepDraft[];
 }
 
@@ -61,8 +65,6 @@ interface Props {
   folderPath?: string[];
   /** Move the current case to another folder. */
   onMove?: (folderId: string) => void;
-  /** Copy a shareable deep link to this case. */
-  onCopyLink?: () => void;
   /** Read-only viewers (e.g. OBSERVER) — hide the save action. */
   readOnly?: boolean;
 }
@@ -80,6 +82,7 @@ function toForm(tc: TestCase | null): FormState {
       priority: 'MEDIUM',
       status: 'DRAFT',
       vendors: [],
+      jiraStoryKeys: [],
       steps: [{ _key: nextKey(), action: '', testData: '', expectedResult: '', screenshotRequired: false }],
     };
   }
@@ -91,6 +94,7 @@ function toForm(tc: TestCase | null): FormState {
     priority: tc.priority,
     status: tc.status,
     vendors: [...tc.vendors],
+    jiraStoryKeys: [...(tc.jiraStoryKeys ?? [])],
     steps:
       tc.steps.length > 0
         ? tc.steps.map((s) => ({
@@ -117,7 +121,6 @@ export function TestCaseEditor({
   folderOptions,
   folderPath,
   onMove,
-  onCopyLink,
   readOnly = false,
 }: Props) {
   const [form, setForm] = useState<FormState>(() => toForm(testCase));
@@ -172,6 +175,7 @@ export function TestCaseEditor({
     priority: form.priority,
     status: form.status,
     vendors: form.vendors,
+    jiraStoryKeys: form.jiraStoryKeys,
     steps: form.steps
       .filter((s) => s.action.trim() || s.expectedResult.trim())
       .map((s) => ({
@@ -215,39 +219,13 @@ export function TestCaseEditor({
               title={folderPath.join(' › ')}
               style={{ fontSize: 11, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
             >
-              📁 {folderPath.join(' › ')}
+              <Icon name="folder" size={12} /> {folderPath.join(' › ')}
             </div>
           ) : null}
         </div>
-        {!isNew && testCase && onMove && folderOptions && folderOptions.length > 0 ? (
-          <label className="esp-muted" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-            📁 Folder
-            <select
-              className="esp-select"
-              style={{ width: 'auto' }}
-              title="Move this test case to another folder"
-              value={testCase.folderId}
-              disabled={saving}
-              onChange={(e) => {
-                if (e.target.value !== testCase.folderId) onMove(e.target.value);
-              }}
-            >
-              {folderOptions.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        {!isNew && onCopyLink ? (
-          <button className="esp-btn esp-btn-ghost" onClick={onCopyLink} title="Copy a shareable link to this test case">
-            🔗 Copy link
-          </button>
-        ) : null}
         {!isNew && onDuplicate ? (
           <button className="esp-btn esp-btn-ghost" onClick={onDuplicate} disabled={saving}>
-            ⧉ Duplicate
+            <Icon name="copy" /> Duplicate
           </button>
         ) : null}
         {!isNew && onDelete ? (
@@ -288,15 +266,42 @@ export function TestCaseEditor({
         </Field>
       </div>
 
-      <Field label="Status">
-        <select className="esp-select" value={form.status} onChange={(e) => set('status', e.target.value as TestCaseStatus)}>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </Field>
+      <div className="esp-grid-2">
+        <Field label="Status">
+          <select className="esp-select" value={form.status} onChange={(e) => set('status', e.target.value as TestCaseStatus)}>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {!isNew && testCase && onMove && folderOptions && folderOptions.length > 0 ? (
+          <Field label="Folder">
+            <select
+              className="esp-select"
+              title="Move this test case to another folder"
+              value={testCase.folderId}
+              disabled={saving}
+              onChange={(e) => {
+                if (e.target.value !== testCase.folderId) onMove(e.target.value);
+              }}
+            >
+              {folderOptions.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : null}
+      </div>
+
+      <JiraLinkField
+        keys={form.jiraStoryKeys}
+        onChange={(k) => set('jiraStoryKeys', k)}
+        disabled={readOnly}
+      />
 
       <Field label="Vendors">
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -310,7 +315,7 @@ export function TestCaseEditor({
                 style={on ? { background: 'var(--esp-powder)', borderColor: 'var(--esp-border-strong)' } : undefined}
                 onClick={() => toggleVendor(v)}
               >
-                {on ? '✓ ' : ''}
+                {on ? <Icon name="check" size={13} /> : null}
                 {VENDOR_LABELS[v]} ({v})
               </button>
             );
@@ -352,7 +357,7 @@ export function TestCaseEditor({
               <span className="esp-step-num">{i + 1}</span>
               <div style={{ flex: 1 }} />
               <button className="esp-btn esp-btn-ghost" onClick={() => moveStep(s._key, -1)} disabled={i === 0} title="Move up">
-                ↑
+                <Icon name="arrowUp" />
               </button>
               <button
                 className="esp-btn esp-btn-ghost"
@@ -360,10 +365,10 @@ export function TestCaseEditor({
                 disabled={i === form.steps.length - 1}
                 title="Move down"
               >
-                ↓
+                <Icon name="arrowDown" />
               </button>
               <button className="esp-btn esp-btn-ghost" onClick={() => removeStep(s._key)} title="Remove step">
-                ✕
+                <Icon name="x" />
               </button>
             </div>
             <textarea
@@ -393,7 +398,7 @@ export function TestCaseEditor({
                 checked={s.screenshotRequired}
                 onChange={(e) => setStep(s._key, { screenshotRequired: e.target.checked })}
               />
-              📎 Require a screenshot to mark this step
+              <Icon name="paperclip" size={13} /> Require a screenshot to mark this step
             </label>
           </div>
         ))}
@@ -420,5 +425,138 @@ export function TestCaseEditor({
         {!isNew && dirty ? <span className="esp-muted" style={{ alignSelf: 'center', fontSize: 12 }}>Unsaved changes</span> : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * Search Jira and attach story keys to the case. Typing debounces a `jira.search`
+ * call; results drop down to pick from, and a key can also be linked verbatim
+ * with Enter (handy when Jira isn't reachable or for a key you already know).
+ */
+function JiraLinkField({
+  keys,
+  onChange,
+  disabled,
+}: {
+  keys: string[];
+  onChange: (keys: string[]) => void;
+  disabled?: boolean;
+}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<JiraIssueSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setResults([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const t = window.setTimeout(() => {
+      searchJiraIssues(q)
+        .then((r) => {
+          setResults(r);
+          setError(null);
+        })
+        .catch((e) => {
+          setResults([]);
+          setError(e instanceof Error ? e.message : 'Search failed');
+        })
+        .finally(() => setLoading(false));
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [query]);
+
+  const add = (key: string) => {
+    const k = key.trim().toUpperCase();
+    if (k && !keys.includes(k)) onChange([...keys, k]);
+    setQuery('');
+    setResults([]);
+    setOpen(false);
+  };
+  const remove = (key: string) => onChange(keys.filter((x) => x !== key));
+
+  return (
+    <Field label="Linked Jira stories">
+      {keys.length > 0 ? (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: disabled ? 0 : 8 }}>
+          {keys.map((k) => (
+            <span key={k} className="esp-badge esp-badge-soft" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+              {k}
+              {!disabled ? (
+                <button type="button" className="esp-jira-x" onClick={() => remove(k)} title={`Unlink ${k}`} aria-label={`Unlink ${k}`}>
+                  ×
+                </button>
+              ) : null}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {disabled ? (
+        keys.length === 0 ? <div className="esp-muted" style={{ fontSize: 12 }}>None linked.</div> : null
+      ) : (
+        <div style={{ position: 'relative' }}>
+          <input
+            className="esp-input"
+            value={query}
+            placeholder="Search Jira by key or summary (e.g. PLOT-1042) — Enter to link"
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => window.setTimeout(() => setOpen(false), 150)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                if (query.trim()) add(query);
+              }
+            }}
+          />
+          {open && query.trim() ? (
+            <div className="esp-jira-results">
+              {loading ? (
+                <div className="esp-jira-result-empty">Searching…</div>
+              ) : error ? (
+                <div className="esp-jira-result-empty">
+                  {error} — press Enter to link “{query.trim().toUpperCase()}” anyway.
+                </div>
+              ) : results.length === 0 ? (
+                <div className="esp-jira-result-empty">
+                  No matches. Press Enter to link “{query.trim().toUpperCase()}” anyway.
+                </div>
+              ) : (
+                results.map((r) => {
+                  const already = keys.includes(r.key);
+                  return (
+                    <button
+                      type="button"
+                      key={r.key}
+                      className="esp-jira-result"
+                      disabled={already}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => add(r.key)}
+                    >
+                      <span className="esp-case-id" style={{ width: 'auto' }}>{r.key}</span>
+                      <span className="esp-jira-result-summary">{r.summary}</span>
+                      {already ? (
+                        <span className="esp-muted" style={{ fontSize: 11 }}>linked</span>
+                      ) : r.status ? (
+                        <span className="esp-badge esp-badge-soft">{r.status}</span>
+                      ) : null}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
+    </Field>
   );
 }

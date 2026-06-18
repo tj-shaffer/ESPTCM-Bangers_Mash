@@ -52,6 +52,49 @@ export function jiraOptions(): { configured: boolean; issueTypes: string[] } {
   return { configured: !!cfg, issueTypes: types };
 }
 
+export interface JiraIssueSummary {
+  key: string;
+  summary: string;
+  url: string;
+  issueType?: string;
+  status?: string;
+}
+
+/**
+ * Search Jira issues to link to a test case. A query that looks like an issue
+ * key (e.g. `PLOT-1234`) is matched exactly; anything else is a text search on
+ * summary. Uses the non-deprecated `/rest/api/3/search/jql` endpoint.
+ */
+export async function jiraSearch(query: string): Promise<JiraIssueSummary[]> {
+  const cfg = jiraCfg();
+  const q = query.trim();
+  if (!cfg || !q) return [];
+  const root = cfg.baseUrl.replace(/\/$/, '');
+  const headers = authHeaders();
+
+  const escaped = q.replace(/["\\]/g, '\\$&');
+  const jql = /^[A-Za-z][A-Za-z0-9]*-\d+$/.test(q)
+    ? `key = "${q.toUpperCase()}"`
+    : `summary ~ "${escaped}*" ORDER BY updated DESC`;
+
+  const url = `${root}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=10&fields=summary,issuetype,status`;
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Jira search failed (${res.status}): ${text.slice(0, 300)}`);
+  }
+  const data = (await res.json()) as {
+    issues?: { key: string; fields?: { summary?: string; issuetype?: { name?: string }; status?: { name?: string } } }[];
+  };
+  return (data.issues ?? []).map((i) => ({
+    key: i.key,
+    summary: i.fields?.summary ?? '',
+    issueType: i.fields?.issuetype?.name,
+    status: i.fields?.status?.name,
+    url: `${root}/browse/${i.key}`,
+  }));
+}
+
 export async function jiraCheck(): Promise<JiraCheckResult> {
   const cfg = jiraCfg();
   const base = { projectKey: cfg?.defaultProjectKey ?? '', configuredIssueType: cfg?.problemIssueType ?? '' };

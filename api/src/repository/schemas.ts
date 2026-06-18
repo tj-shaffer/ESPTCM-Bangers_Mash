@@ -78,6 +78,7 @@ const caseFields = {
   vendors: z.array(vendorCode).optional(),
   environments: z.array(environment).optional(),
   labels: z.array(z.string()).optional(),
+  jiraStoryKeys: z.array(z.string()).optional(),
   estimatedDurationMinutes: z.number().optional(),
   steps: z.array(stepInput).optional(),
 };
@@ -190,6 +191,7 @@ export const schemas = {
       severity: priority.optional(),
     }),
   }),
+  'jira.search': z.object({ query: z.string().optional() }),
   'defect.toJira': z.object({ id: req('Defect id is required'), issueType: z.string().optional() }),
   'defect.linkJira': z.object({ id: req('Defect id is required'), jiraIssueKey: req('A Jira issue key is required') }),
 

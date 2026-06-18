@@ -11,6 +11,7 @@ import { RUN_STAGE_LABEL, tcId } from '../../domain/types';
 import type { RunExecutionSummary } from '../../domain/types';
 import { ExecBadge } from './ExecutionRunner';
 import { ApprovalPanel } from './runStageControls';
+import { Icon } from '../../components/Icon';
 
 export function ExecutiveApproval({
   runId,
@@ -34,9 +35,23 @@ export function ExecutiveApproval({
       title={detail ? detail.name : 'Approval'}
       onClose={onExit}
       footer={
-        <button className="esp-btn esp-btn-secondary" onClick={onExit}>
-          Close
-        </button>
+        <>
+          {detail ? (
+            <button
+              className="esp-btn esp-btn-secondary"
+              style={{ marginRight: 'auto' }}
+              onClick={() => {
+                window.location.hash = `dashboard/${detail.id}`;
+              }}
+              title="See this run's results in the dashboard"
+            >
+              <Icon name="chart" /> View in dashboard
+            </button>
+          ) : null}
+          <button className="esp-btn esp-btn-secondary" onClick={onExit}>
+            Close
+          </button>
+        </>
       }
     >
       {run.isLoading || !detail ? (

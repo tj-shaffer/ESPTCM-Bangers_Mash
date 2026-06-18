@@ -17,6 +17,7 @@ import {
   useSetStepResult,
 } from '../../api/runs';
 import { useAuth } from '../../context/AuthContext';
+import { Icon } from '../../components/Icon';
 import { EXEC_STATUS_LABEL, PRIORITIES, tcId } from '../../domain/types';
 import type { AttachmentView, ExecutionDetail, ExecutionStatus, Priority } from '../../domain/types';
 
@@ -104,8 +105,14 @@ export function ExecutionRunner({
 export function ExecutionBody({ data, runId }: { data: ExecutionDetail; runId: string }) {
   const setStep = useSetStepResult(runId);
   const steps = data.steps;
+  // Steps where the tester tried to mark a verdict before attaching the required
+  // screenshot — we surface an inline nudge rather than silently doing nothing.
+  const [nudged, setNudged] = useState<Set<string>>(new Set());
+  const nudge = (id: string) => setNudged((prev) => new Set(prev).add(id));
 
   const isGated = (s: ExecutionDetail['steps'][number]) => s.screenshotRequired && s.attachments.length === 0;
+  const hasActionable = steps.some((s) => s.status === 'NOT_STARTED' && !isGated(s));
+  const gatedRemaining = steps.some((s) => s.status === 'NOT_STARTED' && isGated(s));
 
   const passAllRemaining = () => {
     for (const s of steps) {
@@ -136,10 +143,20 @@ export function ExecutionBody({ data, runId }: { data: ExecutionDetail; runId: s
           This case has no steps. Mark its overall status with “Complete &amp; next”.
         </p>
       ) : (
-        <div style={{ marginBottom: 10 }}>
-          <button className="esp-btn esp-btn-secondary" onClick={passAllRemaining}>
-            ✓ Pass all remaining
+        <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            className="esp-btn esp-btn-secondary"
+            onClick={passAllRemaining}
+            disabled={!hasActionable}
+            title={!hasActionable ? 'No steps are available to pass' : undefined}
+          >
+            <Icon name="check" /> Pass all remaining
           </button>
+          {!hasActionable && gatedRemaining ? (
+            <span className="esp-muted" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <Icon name="paperclip" /> Remaining steps need a screenshot before they can pass.
+            </span>
+          ) : null}
         </div>
       )}
 
@@ -151,8 +168,8 @@ export function ExecutionBody({ data, runId }: { data: ExecutionDetail; runId: s
               <span className="esp-step-num">{s.order}</span>
               <ExecBadge status={s.status} />
               {s.screenshotRequired ? (
-                <span className="esp-badge esp-badge-soft" title="A screenshot is required to mark this step">
-                  📎 Screenshot required
+                <span className="esp-badge esp-badge-soft" title="A screenshot is required to mark this step" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <Icon name="paperclip" /> Screenshot required
                 </span>
               ) : null}
             </div>
@@ -171,20 +188,26 @@ export function ExecutionBody({ data, runId }: { data: ExecutionDetail; runId: s
               {STEP_STATUSES.map((st) => (
                 <button
                   key={st}
-                  className={`esp-vbtn${s.status === st ? ` on-${st}` : ''}`}
-                  disabled={gated}
+                  className={`esp-vbtn${s.status === st ? ` on-${st}` : ''}${gated ? ' esp-vbtn-gated' : ''}`}
+                  aria-disabled={gated}
                   title={gated ? 'Attach a screenshot first' : undefined}
-                  onClick={() =>
-                    setStep.mutate({ executionId: data.id, stepResultId: s.id, patch: { status: st } })
-                  }
+                  onClick={() => {
+                    // Keep gated buttons clickable so a click can explain itself,
+                    // rather than a dead disabled button that does nothing.
+                    if (gated) {
+                      nudge(s.id);
+                      return;
+                    }
+                    setStep.mutate({ executionId: data.id, stepResultId: s.id, patch: { status: st } });
+                  }}
                 >
                   {EXEC_STATUS_LABEL[st]}
                 </button>
               ))}
             </div>
             {gated ? (
-              <p className="esp-muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
-                📎 Attach a screenshot below to mark this step.
+              <p className={`esp-gate-note${nudged.has(s.id) ? ' nudge' : ''}`}>
+                <Icon name="paperclip" /> Attach a screenshot below to mark this step.
               </p>
             ) : null}
 
@@ -248,7 +271,7 @@ function InlineDefect({
   if (logged && !open) {
     return (
       <p className="esp-muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
-        ✓ Defect logged.{' '}
+        <Icon name="check" /> Defect logged.{' '}
         <button className="esp-link-btn" style={{ background: 'none', border: 'none', padding: 0, color: 'var(--esp-orange-strong)', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setOpen(true)}>
           Log another
         </button>
@@ -259,7 +282,7 @@ function InlineDefect({
   if (!open) {
     return (
       <button className="esp-btn esp-btn-secondary" style={{ marginTop: 8 }} onClick={() => setOpen(true)}>
-        ⚠ Log defect for this step
+        <Icon name="alert" /> Log defect for this step
       </button>
     );
   }
@@ -363,8 +386,8 @@ function DefectsPanel({ exec, runId }: { exec: ExecutionDetail; runId: string })
             <span style={{ marginLeft: 'auto' }}>
               {d.jiraIssueKey ? (
                 d.jiraUrl ? (
-                  <a className="esp-badge esp-badge-soft" href={d.jiraUrl} target="_blank" rel="noreferrer">
-                    {d.jiraIssueKey} ↗
+                  <a className="esp-badge esp-badge-soft" href={d.jiraUrl} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    {d.jiraIssueKey} <Icon name="external" size={12} />
                   </a>
                 ) : (
                   <span className="esp-badge esp-badge-soft">{d.jiraIssueKey}</span>
@@ -474,7 +497,7 @@ function ManualJiraLink({ defectId, runId }: { defectId: string; runId: string }
         disabled={!key.trim() || link.isPending}
         title="Link an existing Jira issue (no ticket is created)"
       >
-        {link.isPending ? 'Linking…' : '🔗 Link'}
+        {link.isPending ? 'Linking…' : <><Icon name="link" /> Link</>}
       </button>
     </span>
   );
@@ -544,7 +567,7 @@ function StepAttachments({
           onClick={() => fileRef.current?.click()}
           disabled={addAtt.isPending}
         >
-          {addAtt.isPending ? 'Uploading…' : '📎 Attach screenshot'}
+          {addAtt.isPending ? 'Uploading…' : <><Icon name="paperclip" /> Attach screenshot</>}
         </button>
         <input
           ref={fileRef}
@@ -561,27 +584,27 @@ function StepAttachments({
           <span key={a.id} className="esp-badge esp-badge-soft" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
             <button
               className="esp-link-btn"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'inherit', textDecoration: 'underline' }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'inherit', textDecoration: 'underline', display: 'inline-flex', alignItems: 'center', gap: 4 }}
               onClick={() => void view(a.id)}
               title="Open attachment"
             >
-              {a.contentType.startsWith('image/') ? '🖼' : '📄'} {a.filename}
+              <Icon name={a.contentType.startsWith('image/') ? 'image' : 'file'} size={12} /> {a.filename}
             </button>
             <button
               className="esp-link-btn"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'inherit' }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'inherit', display: 'inline-flex', alignItems: 'center' }}
               onClick={() => void download(a.id)}
               title={`Download ${a.filename}`}
             >
-              ⬇
+              <Icon name="download" size={13} />
             </button>
             <button
               className="esp-link-btn"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'inherit' }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'inherit', display: 'inline-flex', alignItems: 'center' }}
               onClick={() => delAtt.mutate(a.id)}
               title="Remove attachment"
             >
-              ✕
+              <Icon name="x" size={13} />
             </button>
           </span>
         ))}

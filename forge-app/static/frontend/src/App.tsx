@@ -9,6 +9,7 @@ import { useAuth } from './context/AuthContext';
 import { ROLE_LABELS } from './api/permissions';
 import { STANDALONE, WEB_MODE } from './api/client';
 import { Logo } from './components/Logo';
+import { Icon } from './components/Icon';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { RepositoryView } from './features/repository/RepositoryView';
 
@@ -107,8 +108,8 @@ export function App() {
             borderBottom: '1px solid var(--esp-border)',
           }}
         >
-          👁 Viewing as <strong>{ROLE_LABELS[auth.viewAsRole]}</strong> — affordances and actions are limited to this
-          role.
+          <Icon name="eye" /> Viewing as <strong>{ROLE_LABELS[auth.viewAsRole]}</strong> — affordances and actions are
+          limited to this role.
           <button className="esp-btn esp-btn-ghost" style={{ marginLeft: 10 }} onClick={() => auth.setViewAsRole(null)}>
             Exit
           </button>
@@ -154,7 +155,7 @@ function AccountMenu({ onChangePassword }: { onChangePassword: () => void }) {
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        👤 ▾
+        <Icon name="user" /> <Icon name="chevronDown" size={13} />
       </button>
       {open ? (
         <>

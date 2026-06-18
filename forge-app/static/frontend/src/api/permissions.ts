@@ -28,6 +28,7 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'meta.projects': ALL,
   'jira.check': ALL,
   'jira.options': ALL,
+  'jira.search': ALL,
 
   'exec.setStep': EXECUTE,
   'exec.addAttachment': EXECUTE,

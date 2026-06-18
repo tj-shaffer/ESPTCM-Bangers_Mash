@@ -21,6 +21,7 @@ import { useFolderTree, useProjects } from '../../api/repository';
 import { EXEC_STATUS_LABEL, RUN_STAGE_LABEL, TEST_TYPES, TEST_TYPE_LABELS, tcId } from '../../domain/types';
 import type { DashboardData, DashboardFilters, ExecutionStatus, ReportRow, TestType } from '../../domain/types';
 import { ExecBadge } from '../runs/ExecutionRunner';
+import { Icon } from '../../components/Icon';
 
 async function exportResults(d: DashboardData, rows: ReportRow[], scopeLabel: string): Promise<void> {
   const XLSX = await import('xlsx');
@@ -189,7 +190,7 @@ export function DashboardView({ deepRunId = null }: { deepRunId?: string | null 
       </select>
       <div className="esp-header-spacer" />
       <button className="esp-btn esp-btn-secondary" onClick={() => void runExport()} disabled={exporting || !dash.data}>
-        {exporting ? 'Exporting…' : '⬇ Export results'}
+        {exporting ? 'Exporting…' : <><Icon name="download" /> Export results</>}
       </button>
     </div>
   );

@@ -29,6 +29,7 @@ import type {
   FolderNode,
   ImportResult,
   ImportedCaseRow,
+  JiraIssueSummary,
   PackageDetail,
   PackageSummary,
   Priority,
@@ -255,6 +256,7 @@ class MockStore {
       ownerAccountId: owner,
       version: 1,
       labels: input.labels ?? [],
+      jiraStoryKeys: normalizeJiraKeys(input.jiraStoryKeys),
       estimatedDurationMinutes: input.estimatedDurationMinutes,
       steps: normalizeSteps(input.steps ?? []),
       createdAt: now,
@@ -277,6 +279,7 @@ class MockStore {
     if (patch.environments !== undefined) c.environments = patch.environments;
     if (patch.folderId !== undefined) c.folderId = patch.folderId;
     if (patch.labels !== undefined) c.labels = patch.labels;
+    if (patch.jiraStoryKeys !== undefined) c.jiraStoryKeys = normalizeJiraKeys(patch.jiraStoryKeys);
     if (patch.estimatedDurationMinutes !== undefined) c.estimatedDurationMinutes = patch.estimatedDurationMinutes;
     if (patch.steps !== undefined) c.steps = normalizeSteps(patch.steps);
     c.version += 1;
@@ -938,6 +941,26 @@ function toSummary(c: TestCase): TestCaseSummary {
   };
 }
 
+function normalizeJiraKeys(keys: string[] | undefined): string[] {
+  return [...new Set((keys ?? []).map((k) => k.trim().toUpperCase()).filter(Boolean))];
+}
+
+/** Fake Jira backlog so "link a story" is demoable in the mock/preview build. */
+const MOCK_JIRA_ISSUES: JiraIssueSummary[] = [
+  { key: 'PLOT-1042', summary: 'Reserve an available plot for pre-need customers', issueType: 'Story', status: 'In Progress', url: '#' },
+  { key: 'PLOT-1108', summary: 'Interment scheduling must block double-booking', issueType: 'Story', status: 'To Do', url: '#' },
+  { key: 'PLOT-1190', summary: 'Payment plan setup for at-need contracts', issueType: 'Story', status: 'In Review', url: '#' },
+  { key: 'PLOT-1233', summary: 'Lawson GL export for daily settlements', issueType: 'Story', status: 'To Do', url: '#' },
+  { key: 'PLOT-1287', summary: 'Cross-vendor sale → payment end-to-end flow', issueType: 'Epic', status: 'In Progress', url: '#' },
+  { key: 'PLOT-1305', summary: 'Refund handling when a reservation is cancelled', issueType: 'Story', status: 'Done', url: '#' },
+];
+
+function mockJiraSearch(query: string): JiraIssueSummary[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  return MOCK_JIRA_ISSUES.filter((i) => i.key.toLowerCase().includes(q) || i.summary.toLowerCase().includes(q)).slice(0, 8);
+}
+
 function normalizeSteps(steps: TestStepInput[]): TestStep[] {
   return steps
     .filter((s) => (s.action ?? '').trim() || (s.expectedResult ?? '').trim())
@@ -987,6 +1010,7 @@ function buildSeed(): { folders: TestFolder[]; cases: TestCase[]; nextDisplayId:
     ownerAccountId: OWNER,
     version: 1,
     labels: [],
+    jiraStoryKeys: [],
     steps: [],
     createdAt: now,
     updatedAt: now,
@@ -1168,6 +1192,8 @@ export async function mockInvoke<T>(key: string, payload: Record<string, unknown
       return { configured: false, issueTypes: [] } as T;
     case 'jira.check':
       return { configured: false, ok: false, status: 0, projectKey: 'DS', projectFound: false, issueTypes: [], issueTypeExists: false, requiredFields: [], message: 'Jira is not configured in the preview.' } as T;
+    case 'jira.search':
+      return mockJiraSearch(String(p.query ?? '')) as T;
 
     // reporting
     case 'meta.projects':

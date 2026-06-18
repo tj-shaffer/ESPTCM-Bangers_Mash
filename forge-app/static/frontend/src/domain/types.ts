@@ -79,9 +79,20 @@ export interface TestCase {
   version: number;
   labels: string[];
   estimatedDurationMinutes?: number;
+  /** Linked Jira story keys (e.g. PLOT-1234) this case verifies. */
+  jiraStoryKeys: string[];
   steps: TestStep[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** A Jira issue returned from the link-a-story search. */
+export interface JiraIssueSummary {
+  key: string;
+  summary: string;
+  url: string;
+  issueType?: string;
+  status?: string;
 }
 
 export interface TestCaseSummary {
@@ -123,6 +134,7 @@ export interface CreateTestCaseInput {
   folderId: string;
   labels?: string[];
   estimatedDurationMinutes?: number;
+  jiraStoryKeys?: string[];
   steps?: TestStepInput[];
 }
 

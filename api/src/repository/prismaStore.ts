@@ -131,6 +131,7 @@ type CaseRow = {
   ownerAccountId: string;
   version: number;
   labels: string[];
+  jiraStoryKeys: string[];
   estimatedDurationMinutes: number | null;
   createdAt: Date;
   updatedAt: Date;
@@ -177,11 +178,17 @@ function mapCase(c: CaseRow): TestCase {
     ownerAccountId: c.ownerAccountId,
     version: c.version,
     labels: c.labels,
+    jiraStoryKeys: c.jiraStoryKeys ?? [],
     estimatedDurationMinutes: c.estimatedDurationMinutes ?? undefined,
     steps: (c.steps ?? []).map(mapStep),
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };
+}
+
+/** Trim, upper-case, and de-dupe linked Jira keys; drop blanks. */
+function normalizeJiraKeys(keys: string[] | undefined): string[] {
+  return [...new Set((keys ?? []).map((k) => k.trim().toUpperCase()).filter(Boolean))];
 }
 
 function stepCreateData(steps: TestStepInput[] | undefined) {
@@ -289,6 +296,7 @@ export class PrismaStore implements TestCaseStore {
         folderId: input.folderId,
         ownerAccountId,
         labels: input.labels ?? [],
+        jiraStoryKeys: normalizeJiraKeys(input.jiraStoryKeys),
         estimatedDurationMinutes: input.estimatedDurationMinutes ?? null,
         steps: { create: stepCreateData(input.steps) },
       },
@@ -313,6 +321,7 @@ export class PrismaStore implements TestCaseStore {
     if (patch.environments !== undefined) data.environments = patch.environments;
     if (patch.folderId !== undefined) data.folderId = patch.folderId;
     if (patch.labels !== undefined) data.labels = patch.labels;
+    if (patch.jiraStoryKeys !== undefined) data.jiraStoryKeys = normalizeJiraKeys(patch.jiraStoryKeys);
     if (patch.estimatedDurationMinutes !== undefined)
       data.estimatedDurationMinutes = patch.estimatedDurationMinutes ?? null;
     if (patch.steps !== undefined) {
@@ -365,6 +374,7 @@ export class PrismaStore implements TestCaseStore {
         folderId: srcCase.folderId,
         ownerAccountId: srcCase.ownerAccountId,
         labels: srcCase.labels,
+        jiraStoryKeys: srcCase.jiraStoryKeys ?? [],
         estimatedDurationMinutes: srcCase.estimatedDurationMinutes,
         steps: {
           create: (srcCase.steps ?? []).map((s) => ({

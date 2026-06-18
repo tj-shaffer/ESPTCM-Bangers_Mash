@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import type { TestCaseStatus, TestCaseSummary } from '../../domain/types';
 import { STATUSES, tcId } from '../../domain/types';
 import { PriorityBadge, StatusBadge } from '../../components/ui';
+import { Icon } from '../../components/Icon';
 
 interface BulkActions {
   onDelete: (ids: string[]) => Promise<void>;
@@ -89,7 +90,7 @@ export function TestCaseList({ cases, selectedId, onSelect, bulk }: Props) {
               onClick={() => bulk.onRun!(ids())}
               title="Start a test run from the selected cases"
             >
-              ▶ Run selected
+              <Icon name="play" /> Run selected
             </button>
           ) : null}
           <select

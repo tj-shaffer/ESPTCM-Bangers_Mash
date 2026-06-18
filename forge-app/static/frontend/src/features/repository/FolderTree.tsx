@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { FolderNode } from '../../domain/types';
+import { Icon } from '../../components/Icon';
 
 interface Props {
   nodes: FolderNode[];
@@ -80,9 +81,11 @@ function FolderRow({
           }}
           style={{ visibility: hasChildren ? 'visible' : 'hidden' }}
         >
-          ▶
+          <Icon name="chevronDown" size={12} />
         </span>
-        <span aria-hidden>{hasChildren ? (isOpen ? '📂' : '📁') : '📄'}</span>
+        <span aria-hidden style={{ display: 'inline-flex', color: 'var(--esp-faint)' }}>
+          <Icon name={hasChildren ? 'folder' : 'file'} size={15} />
+        </span>
         <span className="esp-tree-name" title={node.name}>
           {node.name}
         </span>

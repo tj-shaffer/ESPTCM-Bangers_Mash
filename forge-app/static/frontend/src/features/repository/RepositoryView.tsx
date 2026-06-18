@@ -21,6 +21,7 @@ import { TestCaseList } from './TestCaseList';
 import { TestCaseEditor } from './TestCaseEditor';
 import { ImportWizard } from '../import/ImportWizard';
 import { Modal, Toast } from '../../components/ui';
+import { Icon } from '../../components/Icon';
 import { useAuth } from '../../context/AuthContext';
 
 function findFirstFolder(nodes: FolderNode[]): FolderNode | null {
@@ -117,14 +118,6 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
   const flashToast = (msg: string) => {
     setToast(msg);
     window.setTimeout(() => setToast(null), 2600);
-  };
-
-  const copyCaseLink = (caseId: string) => {
-    const url = `${window.location.origin}${window.location.pathname}#repository/${caseId}`;
-    void navigator.clipboard
-      ?.writeText(url)
-      .then(() => flashToast('Link copied to clipboard'))
-      .catch(() => flashToast(url));
   };
 
   const saving = createCase.isPending || updateCase.isPending;
@@ -297,7 +290,7 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
                 }
                 onClick={openRunFolder}
               >
-                ▶ Run folder
+                <Icon name="play" /> Run folder
               </button>
             ) : null}
             {canAuthor ? (
@@ -307,7 +300,7 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
                   disabled={!folder}
                   onClick={() => setShowImport(true)}
                 >
-                  ⬆ Import CSV/Excel
+                  <Icon name="upload" /> Import CSV/Excel
                 </button>
                 <button
                   className="esp-btn esp-btn-primary"
@@ -369,7 +362,6 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
             folderOptions={flattenFolders(tree.data ?? [])}
             folderPath={casePath}
             onMove={canAuthor ? handleMove : undefined}
-            onCopyLink={() => copyCaseLink(selectedCase.data!.id)}
             saving={saving}
             onSave={handleSave}
             onDuplicate={canAuthor ? handleDuplicate : undefined}
@@ -385,7 +377,7 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
         ) : (
           <div className="esp-detail">
             <div className="esp-detail-empty">
-              <div style={{ fontSize: 30 }}>🗂️</div>
+              <div style={{ color: 'var(--esp-faint)' }}><Icon name="folder" size={30} /></div>
               <div style={{ fontWeight: 700 }}>Select a test case</div>
               <div className="esp-muted">Pick one from the list, or create / import to get started.</div>
             </div>
@@ -489,7 +481,7 @@ function StartRunModal({
             Cancel
           </button>
           <button className="esp-btn esp-btn-primary" disabled={!canStart} onClick={start}>
-            {createRun.isPending ? 'Starting…' : `▶ Start run (${runnable.length})`}
+            {createRun.isPending ? 'Starting…' : <><Icon name="play" /> Start run ({runnable.length})</>}
           </button>
         </>
       }

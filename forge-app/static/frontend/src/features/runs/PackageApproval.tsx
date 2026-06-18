@@ -11,6 +11,7 @@ import { useAuth } from '../../context/AuthContext';
 import { pkgId, RUN_STAGE_LABEL, TEST_TYPE_LABELS } from '../../domain/types';
 import type { TestRunSummary } from '../../domain/types';
 import { ExecBadge } from './ExecutionRunner';
+import { Icon } from '../../components/Icon';
 import { PackageApprovalPanel } from './runStageControls';
 
 export function PackageApproval({
@@ -75,9 +76,9 @@ export function PackageApproval({
                     <div className="esp-case-title">{r.name}</div>
                     <div className="esp-case-meta">
                       <span>{r.environment}</span>
-                      <span style={{ color: 'var(--esp-active)' }}>✓ {r.passed}</span>
-                      <span style={{ color: 'var(--esp-critical)' }}>✗ {r.failed}</span>
-                      <span style={{ color: 'var(--esp-draft)' }}>⚠ {r.blocked}</span>
+                      <span style={{ color: 'var(--esp-good)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="check" size={12} /> {r.passed}</span>
+                      <span style={{ color: 'var(--esp-bad)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="x" size={12} /> {r.failed}</span>
+                      <span style={{ color: 'var(--esp-amber)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="alert" size={12} /> {r.blocked}</span>
                       <span className="esp-muted">· {RUN_STAGE_LABEL[r.stage]}</span>
                     </div>
                   </div>

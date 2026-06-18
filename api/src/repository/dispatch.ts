@@ -17,7 +17,7 @@ import { recordAudit, auditEntityType } from '../lib/audit';
 import { isManager } from './permissions';
 import { DispatchError } from './errors';
 import { parse } from './schemas';
-import { jiraBrowseUrl, jiraCheck, jiraConfigured, jiraCreateProblem, jiraOptions } from '../services/jira';
+import { jiraBrowseUrl, jiraCheck, jiraConfigured, jiraCreateProblem, jiraOptions, jiraSearch } from '../services/jira';
 import type { ExecutionStatus } from '../domain/types';
 
 /** Marking a step to one of these requires a screenshot when the step demands one. */
@@ -230,6 +230,9 @@ export async function dispatch(
 
     case 'jira.options':
       return jiraOptions();
+
+    case 'jira.search':
+      return jiraSearch(parse(key, payload).query ?? '');
 
     case 'defect.toJira': {
       const { id, issueType } = parse(key, payload);

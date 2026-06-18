@@ -22,6 +22,7 @@ import { RunPlayer } from './RunPlayer';
 import { ExecutiveApproval } from './ExecutiveApproval';
 import { PackageApproval } from './PackageApproval';
 import { StageControls } from './runStageControls';
+import { Icon } from '../../components/Icon';
 
 // Approved runs accumulate forever; show only the most recent and point the rest
 // at the dashboard rather than growing the column unbounded.
@@ -131,7 +132,7 @@ export function PipelineView({ deepRunId = null }: { deepRunId?: string | null }
           <option value="">All packages</option>
           {(packages.data ?? []).map((p) => (
             <option key={p.id} value={p.id}>
-              📦 {pkgId(p.displayId)} · {p.name}
+              {pkgId(p.displayId)} · {p.name}
             </option>
           ))}
         </select>
@@ -146,7 +147,7 @@ export function PipelineView({ deepRunId = null }: { deepRunId?: string | null }
             <option value="">All assignees</option>
             {assignees.map((a) => (
               <option key={a} value={a}>
-                👤 {a}
+                {a}
               </option>
             ))}
           </select>
@@ -209,8 +210,8 @@ export function PipelineView({ deepRunId = null }: { deepRunId?: string | null }
                   ))
                 )}
                 {hidden > 0 ? (
-                  <a className="esp-muted" href="#dashboard" style={{ fontSize: 12, padding: '4px 2px', textDecoration: 'none' }}>
-                    +{hidden} older — view in dashboard →
+                  <a className="esp-muted" href="#dashboard" style={{ fontSize: 12, padding: '4px 2px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    +{hidden} older — view in dashboard <Icon name="arrowRight" size={12} />
                   </a>
                 ) : null}
               </div>
@@ -272,16 +273,21 @@ function PackageHeader({
 }) {
   return (
     <div className="esp-toolbar" style={{ background: 'var(--esp-powder-soft)' }}>
-      <strong style={{ fontSize: 13 }}>
-        📦 {pkgId(pkg.displayId)} · {pkg.name}
+      <strong style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <Icon name="package" /> {pkgId(pkg.displayId)} · {pkg.name}
       </strong>
       <span className="esp-badge esp-badge-soft">{TEST_TYPE_LABELS[pkg.packageType]}</span>
       <ExecBadge status={pkg.status} />
-      <span className="esp-muted" style={{ fontSize: 12 }}>
-        {pkg.runCount} runs · <span style={{ color: 'var(--esp-active)' }}>✓ {pkg.passed}</span>{' '}
-        <span style={{ color: 'var(--esp-critical)' }}>✗ {pkg.failed}</span>{' '}
-        <span style={{ color: 'var(--esp-draft)' }}>⚠ {pkg.blocked}</span>
-        {pkg.approvedAt ? ` · ✅ approved by ${pkg.approverName ?? ''}` : ''}
+      <span className="esp-muted" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+        {pkg.runCount} runs ·
+        <span style={{ color: 'var(--esp-good)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="check" size={12} /> {pkg.passed}</span>
+        <span style={{ color: 'var(--esp-bad)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="x" size={12} /> {pkg.failed}</span>
+        <span style={{ color: 'var(--esp-amber)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="alert" size={12} /> {pkg.blocked}</span>
+        {pkg.approvedAt ? (
+          <span style={{ color: 'var(--esp-good)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            · <Icon name="check" size={12} /> approved by {pkg.approverName ?? ''}
+          </span>
+        ) : null}
       </span>
       <div className="esp-header-spacer" />
       {canApprove ? (
@@ -318,8 +324,12 @@ function RunCard({
       <div className="esp-run-card-meta">
         <span className="esp-badge esp-badge-soft">{run.environment}</span>
         <ExecBadge status={run.status} />
-        {run.assigneeName ? <span>👤 {run.assigneeName}</span> : null}
-        {run.packageName ? <span title={run.packageName}>📦 {run.packageName}</span> : null}
+        {run.assigneeName ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="user" size={12} /> {run.assigneeName}</span>
+        ) : null}
+        {run.packageName ? (
+          <span title={run.packageName} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="package" size={12} /> {run.packageName}</span>
+        ) : null}
       </div>
       {run.stage === 'IN_PROGRESS' ? (
         <div className="esp-run-card-meta">
@@ -330,9 +340,9 @@ function RunCard({
         </div>
       ) : (
         <div className="esp-run-card-meta">
-          <span style={{ color: 'var(--esp-active)' }}>✓ {run.passed}</span>
-          <span style={{ color: 'var(--esp-critical)' }}>✗ {run.failed}</span>
-          <span style={{ color: 'var(--esp-draft)' }}>⚠ {run.blocked}</span>
+          <span style={{ color: 'var(--esp-good)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="check" size={12} /> {run.passed}</span>
+          <span style={{ color: 'var(--esp-bad)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="x" size={12} /> {run.failed}</span>
+          <span style={{ color: 'var(--esp-amber)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="alert" size={12} /> {run.blocked}</span>
           <span>· {run.total} cases</span>
         </div>
       )}
@@ -346,7 +356,7 @@ function RunCard({
             title="Delete run"
             onClick={onDelete}
           >
-            🗑
+            <Icon name="trash" />
           </button>
         ) : null}
       </div>

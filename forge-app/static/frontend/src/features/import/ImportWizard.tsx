@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { Modal } from '../../components/ui';
+import { Icon } from '../../components/Icon';
 import { useImportCases } from '../../api/repository';
 import {
   FIELD_DEFS,
@@ -120,7 +121,7 @@ export function ImportWizard({ folderId, folderName, onClose, onImported }: Prop
               if (f) void handleFile(f);
             }}
           >
-            <div style={{ fontSize: 28 }}>⬆️</div>
+            <div style={{ color: 'var(--esp-faint)' }}><Icon name="upload" size={28} /></div>
             <div style={{ fontWeight: 700, color: 'var(--esp-ink)' }}>Drop a CSV or Excel file here</div>
             <div style={{ fontSize: 12 }}>or click to browse · .csv, .tsv, .xlsx, .xls</div>
           </div>
@@ -146,7 +147,7 @@ export function ImportWizard({ folderId, folderName, onClose, onImported }: Prop
               background: 'var(--esp-surface-sunken, rgba(0,0,0,0.03))',
             }}
           >
-            <span style={{ fontSize: 18 }}>📄</span>
+            <span style={{ color: 'var(--esp-blue-strong)', display: 'inline-flex' }}><Icon name="file" size={18} /></span>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--esp-ink)' }}>
                 Not sure how to format your file?
@@ -156,7 +157,7 @@ export function ImportWizard({ folderId, folderName, onClose, onImported }: Prop
               </div>
             </div>
             <button className="esp-btn esp-btn-secondary" onClick={() => downloadTemplate()}>
-              ⬇ Template
+              <Icon name="download" /> Template
             </button>
           </div>
           <p className="esp-muted" style={{ fontSize: 12, marginTop: 14 }}>
@@ -270,7 +271,7 @@ export function ImportWizard({ folderId, folderName, onClose, onImported }: Prop
 
       {stage === 'done' && (
         <div style={{ textAlign: 'center', padding: '20px 0' }}>
-          <div style={{ fontSize: 34 }}>✅</div>
+          <div style={{ color: 'var(--esp-good)', display: 'flex', justifyContent: 'center' }}><Icon name="check" size={34} /></div>
           <h3 style={{ marginTop: 8 }}>Imported {createdCount} test case{createdCount === 1 ? '' : 's'}</h3>
           <p className="esp-muted">They're now in <strong>{folderName}</strong>.</p>
         </div>

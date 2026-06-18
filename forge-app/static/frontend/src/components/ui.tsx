@@ -2,6 +2,7 @@
 
 import { useEffect, type ReactNode } from 'react';
 import type { Priority, TestCaseStatus } from '../domain/types';
+import { Icon } from './Icon';
 
 export function PriorityBadge({ priority }: { priority: Priority }) {
   return <span className={`esp-badge esp-prio-${priority}`}>{priority}</span>;
@@ -51,7 +52,7 @@ export function Modal({
         <div className="esp-modal-head">
           <h3>{title}</h3>
           <button className="esp-btn esp-btn-ghost" onClick={onClose} aria-label="Close">
-            ✕
+            <Icon name="x" />
           </button>
         </div>
         <div className="esp-modal-body">{children}</div>

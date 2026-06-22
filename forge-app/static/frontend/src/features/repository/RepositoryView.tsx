@@ -346,8 +346,8 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
             {canAuthor ? (
               <button
                 className="esp-btn esp-btn-ghost"
-                onClick={() => setNewFolderParent(folder?.id ?? null)}
-                title="New folder"
+                onClick={() => setNewFolderParent(null)}
+                title="New top-level folder (use a folder's ⋯ menu to add a subfolder)"
               >
                 + Folder
               </button>

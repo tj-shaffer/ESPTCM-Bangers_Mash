@@ -209,9 +209,14 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
 
   const handleBulkSetStatus = async (ids: string[], status: TestCaseStatus) => {
     if (ids.length === 0) return;
-    await Promise.all(ids.map((id) => updateCase.mutateAsync({ id, patch: { status } })));
-    qc.invalidateQueries({ queryKey: ['repo'] });
-    flashToast(`Set ${ids.length} case${ids.length === 1 ? '' : 's'} to ${status}`);
+    try {
+      await Promise.all(ids.map((id) => updateCase.mutateAsync({ id, patch: { status } })));
+      flashToast(`Set ${ids.length} case${ids.length === 1 ? '' : 's'} to ${status}`);
+    } catch (err) {
+      flashToast(err instanceof Error ? err.message : 'Could not update some test cases');
+    } finally {
+      qc.invalidateQueries({ queryKey: ['repo'] });
+    }
   };
 
   // ---- Run handoff: launch a run straight from the repository, cases pre-loaded.

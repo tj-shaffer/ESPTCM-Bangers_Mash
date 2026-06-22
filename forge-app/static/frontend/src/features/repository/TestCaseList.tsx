@@ -74,8 +74,10 @@ export function TestCaseList({ cases, selectedId, onSelect, bulk }: Props) {
         <div
           style={{
             display: 'flex',
+            flexWrap: 'wrap',
             alignItems: 'center',
             gap: 8,
+            rowGap: 8,
             padding: '8px 12px',
             borderBottom: '1px solid var(--esp-border)',
             background: 'var(--esp-powder-soft)',
@@ -84,7 +86,19 @@ export function TestCaseList({ cases, selectedId, onSelect, bulk }: Props) {
           <span className="esp-muted" style={{ fontSize: 12 }}>
             {sel.size} selected
           </span>
-          <div className="esp-header-spacer" />
+          {/* Actions live in their own wrapping group so they never clip when the
+              list pane is narrow (laptop widths, or with a case open in the editor
+              pane) — they reflow onto a second line instead. */}
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: 8,
+              rowGap: 8,
+              marginLeft: 'auto',
+            }}
+          >
           {bulk.onRun ? (
             <button
               className="esp-btn esp-btn-primary"
@@ -131,6 +145,7 @@ export function TestCaseList({ cases, selectedId, onSelect, bulk }: Props) {
           <button className="esp-btn esp-btn-ghost" disabled={bulk.busy} onClick={clear}>
             Clear
           </button>
+          </div>
         </div>
       ) : null}
 

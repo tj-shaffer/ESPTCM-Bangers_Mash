@@ -16,6 +16,8 @@ import type {
   AttachmentView,
   CreateDefectInput,
   CreateFolderInput,
+  DeleteFolderResult,
+  UpdateFolderInput,
   CreatePackageInput,
   CreateRunInput,
   CreateTestCaseInput,
@@ -241,6 +243,32 @@ class MockStore {
     };
     this.folders.push(folder);
     return folder;
+  }
+
+  updateFolder(id: string, patch: UpdateFolderInput): TestFolder | null {
+    const f = this.folders.find((x) => x.id === id);
+    if (!f) return null;
+    if (patch.name !== undefined) f.name = patch.name.trim() || f.name;
+    if (patch.vendorCode !== undefined) f.vendorCode = patch.vendorCode ?? undefined;
+    f.updatedAt = nowIso();
+    return f;
+  }
+
+  deleteFolder(id: string): DeleteFolderResult | null {
+    if (!this.folders.some((f) => f.id === id)) return null;
+    // Collect the target folder and all of its descendants.
+    const subtree = new Set<string>();
+    const collect = (fid: string) => {
+      subtree.add(fid);
+      for (const child of this.folders.filter((f) => f.parentId === fid)) collect(child.id);
+    };
+    collect(id);
+    const removedCaseIds = this.cases.filter((c) => subtree.has(c.folderId)).map((c) => c.id);
+    this.cases = this.cases.filter((c) => !subtree.has(c.folderId));
+    // Mirror the backend: deleted cases drop out of any runs too.
+    this.execs = this.execs.filter((e) => !removedCaseIds.includes(e.testCaseId));
+    this.folders = this.folders.filter((f) => !subtree.has(f.id));
+    return { deletedFolders: subtree.size, deletedCases: removedCaseIds.length };
   }
 
   listCases(folderId?: string): TestCaseSummary[] {
@@ -1202,6 +1230,16 @@ export async function mockInvoke<T>(key: string, payload: Record<string, unknown
       return store.getFolderTree(p.projectKey) as T;
     case 'repo.createFolder':
       return store.createFolder(p as unknown as CreateFolderInput) as T;
+    case 'repo.updateFolder': {
+      const updated = store.updateFolder(p.id, (p.patch ?? {}) as UpdateFolderInput);
+      if (!updated) throw new Error('Folder not found');
+      return updated as T;
+    }
+    case 'repo.deleteFolder': {
+      const result = store.deleteFolder(p.id);
+      if (!result) throw new Error('Could not delete this folder.');
+      return result as T;
+    }
     case 'repo.listCases':
       return store.listCases(p.folderId) as T;
     case 'repo.getCase':

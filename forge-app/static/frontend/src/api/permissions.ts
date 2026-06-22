@@ -45,6 +45,8 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'package.signOff': MANAGE,
 
   'repo.createFolder': AUTHOR,
+  'repo.updateFolder': AUTHOR,
+  'repo.deleteFolder': AUTHOR,
   'repo.createCase': AUTHOR,
   'repo.updateCase': AUTHOR,
   'repo.deleteCase': AUTHOR,

@@ -62,6 +62,8 @@ export const PERMISSIONS: Record<string, Role[]> = {
 
   // ---------- authoring (authors, managers, super admins) ----------
   'repo.createFolder': AUTHOR,
+  'repo.updateFolder': AUTHOR,
+  'repo.deleteFolder': AUTHOR,
   'repo.createCase': AUTHOR,
   'repo.updateCase': AUTHOR,
   'repo.deleteCase': AUTHOR,

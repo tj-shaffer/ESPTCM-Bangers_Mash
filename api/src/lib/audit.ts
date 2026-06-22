@@ -17,6 +17,8 @@ import { prisma } from '../db/prisma';
 /** Invoke keys that mutate state and should be audited. Reads are excluded. */
 export const WRITE_KEYS: ReadonlySet<string> = new Set([
   'repo.createFolder',
+  'repo.updateFolder',
+  'repo.deleteFolder',
   'repo.createCase',
   'repo.updateCase',
   'repo.deleteCase',

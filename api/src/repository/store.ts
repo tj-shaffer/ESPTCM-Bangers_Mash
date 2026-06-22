@@ -16,6 +16,7 @@ import type {
   CreateTestCaseInput,
   DashboardData,
   DashboardFilters,
+  DeleteFolderResult,
   ExecutionDetail,
   FolderNode,
   ImportResult,
@@ -34,6 +35,7 @@ import type {
   TestFolder,
   TestRunDetail,
   TestRunSummary,
+  UpdateFolderInput,
   UpdateRunInput,
   UpdateSuiteInput,
   UpdateTestCaseInput,
@@ -58,6 +60,9 @@ export interface DefectRecord {
 export interface TestCaseStore {
   getFolderTree(projectKey?: string): Promise<FolderNode[]>;
   createFolder(input: CreateFolderInput): Promise<TestFolder>;
+  updateFolder(id: string, patch: UpdateFolderInput): Promise<TestFolder | null>;
+  /** Cascade-delete a folder, its subfolders, and every case inside them. */
+  deleteFolder(id: string): Promise<DeleteFolderResult | null>;
   listCases(folderId?: string): Promise<TestCaseSummary[]>;
   getCase(id: string): Promise<TestCase | null>;
   createCase(input: CreateTestCaseInput, ownerAccountId: string): Promise<TestCase>;

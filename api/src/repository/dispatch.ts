@@ -53,6 +53,19 @@ export async function dispatch(
     case 'repo.createFolder':
       return store.createFolder(parse(key, payload));
 
+    case 'repo.updateFolder': {
+      const { id, patch } = parse(key, payload);
+      const updated = await store.updateFolder(id, patch ?? {});
+      if (!updated) throw new DispatchError(`Folder ${id} not found`, 404);
+      return updated;
+    }
+
+    case 'repo.deleteFolder': {
+      const result = await store.deleteFolder(parse(key, payload).id);
+      if (!result) throw new DispatchError('Could not delete this folder.', 409);
+      return result;
+    }
+
     case 'repo.listCases':
       return store.listCases(parse(key, payload).folderId);
 

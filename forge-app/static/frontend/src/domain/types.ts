@@ -122,6 +122,17 @@ export interface CreateFolderInput {
   projectKey?: string;
 }
 
+export interface UpdateFolderInput {
+  name?: string;
+  vendorCode?: VendorCode | null;
+}
+
+/** Counts returned by a cascading folder delete, for the confirmation toast. */
+export interface DeleteFolderResult {
+  deletedFolders: number;
+  deletedCases: number;
+}
+
 export interface CreateTestCaseInput {
   title: string;
   objective?: string;

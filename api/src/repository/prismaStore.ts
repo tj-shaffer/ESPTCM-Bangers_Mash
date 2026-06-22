@@ -16,6 +16,7 @@ import type {
   CreateTestCaseInput,
   DashboardData,
   DashboardFilters,
+  DeleteFolderResult,
   ReportRow,
   DefectView,
   Environment,
@@ -44,6 +45,7 @@ import type {
   TestStep,
   TestStepInput,
   TestType,
+  UpdateFolderInput,
   UpdateRunInput,
   UpdateSuiteInput,
   UpdateTestCaseInput,
@@ -253,6 +255,65 @@ export class PrismaStore implements TestCaseStore {
       },
     });
     return mapFolder(created as unknown as FolderRow);
+  }
+
+  async updateFolder(id: string, patch: UpdateFolderInput): Promise<TestFolder | null> {
+    const existing = await prisma.testFolder.findUnique({ where: { id } });
+    if (!existing) return null;
+    const data: Prisma.TestFolderUpdateInput = {};
+    if (patch.name !== undefined) data.name = patch.name.trim() || existing.name;
+    if (patch.vendorCode !== undefined) data.vendorCode = patch.vendorCode ?? null;
+    const updated = await prisma.testFolder.update({ where: { id }, data });
+    return mapFolder(updated as unknown as FolderRow);
+  }
+
+  async deleteFolder(id: string): Promise<DeleteFolderResult | null> {
+    try {
+      // Build the full subtree (target + all descendants). Folders self-reference
+      // with RESTRICT and cases reference their folder with RESTRICT, so nothing
+      // can be deleted until its dependents are gone — we delete depth-first.
+      const all = await prisma.testFolder.findMany({ select: { id: true, parentId: true } });
+      if (!all.some((f) => f.id === id)) return null;
+      const childrenOf = new Map<string, string[]>();
+      for (const f of all) {
+        if (!f.parentId) continue;
+        const list = childrenOf.get(f.parentId) ?? [];
+        list.push(f.id);
+        childrenOf.set(f.parentId, list);
+      }
+      // Pre-order walk: a parent always precedes its descendants.
+      const preorder: string[] = [];
+      const stack = [id];
+      while (stack.length > 0) {
+        const cur = stack.pop()!;
+        preorder.push(cur);
+        for (const child of childrenOf.get(cur) ?? []) stack.push(child);
+      }
+      const caseRows = await prisma.testCase.findMany({
+        where: { folderId: { in: preorder } },
+        select: { id: true },
+      });
+      const caseIds = caseRows.map((c) => c.id);
+
+      // Reversed pre-order deletes every child before its parent.
+      const folderDeletes = [...preorder]
+        .reverse()
+        .map((fid) => prisma.testFolder.delete({ where: { id: fid } }));
+
+      await prisma.$transaction([
+        // Runs/cycle assignments reference cases with RESTRICT (steps, versions,
+        // suite memberships cascade on case delete on their own).
+        prisma.cycleAssignment.deleteMany({ where: { testCaseId: { in: caseIds } } }),
+        prisma.testExecution.deleteMany({ where: { testCaseId: { in: caseIds } } }),
+        prisma.testCase.deleteMany({ where: { id: { in: caseIds } } }),
+        ...folderDeletes,
+      ]);
+      return { deletedFolders: preorder.length, deletedCases: caseIds.length };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[store] deleteFolder failed', err);
+      return null;
+    }
   }
 
   async listCases(folderId?: string): Promise<TestCaseSummary[]> {

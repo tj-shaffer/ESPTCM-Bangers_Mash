@@ -115,6 +115,13 @@ export const schemas = {
     vendorCode: vendorCode.optional(),
     projectKey: z.string().optional(),
   }),
+  'repo.updateFolder': z.object({
+    id: req('Folder id is required'),
+    patch: z
+      .object({ name: z.string().optional(), vendorCode: vendorCode.nullable().optional() })
+      .partial(),
+  }),
+  'repo.deleteFolder': z.object({ id: req('Folder id is required') }),
   'repo.createCase': z.object({ folderId: req('folderId is required'), ...caseFields }),
   'repo.updateCase': z.object({
     id: req('Test case id is required'),

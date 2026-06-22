@@ -11,13 +11,15 @@ import {
   useCreateCase,
   useCreateFolder,
   useDeleteCase,
+  useDeleteFolder,
   useDuplicateCase,
   useFolderTree,
   useUpdateCase,
+  useUpdateFolder,
 } from '../../api/repository';
 import { useCreateRun, usePackages } from '../../api/runs';
 import { useSuites, useSuite, useCreateSuite, useDeleteSuite } from '../../api/suites';
-import { FolderTree } from './FolderTree';
+import { FolderTree, type FolderActions } from './FolderTree';
 import { TestCaseList } from './TestCaseList';
 import { TestCaseEditor } from './TestCaseEditor';
 import { ImportWizard } from '../import/ImportWizard';
@@ -59,13 +61,33 @@ function folderPathNames(nodes: FolderNode[], id: string): string[] {
   return (walk(nodes, []) ?? []).map((f) => f.name);
 }
 
+/** Total folders (including the node itself) and test cases in a subtree. */
+function folderSubtreeStats(node: FolderNode): { folders: number; cases: number } {
+  let folders = 1;
+  let cases = node.testCaseCount;
+  for (const child of node.children) {
+    const s = folderSubtreeStats(child);
+    folders += s.folders;
+    cases += s.cases;
+  }
+  return { folders, cases };
+}
+
+/** All folder ids in a subtree (the node plus every descendant). */
+function collectFolderIds(node: FolderNode): string[] {
+  return [node.id, ...node.children.flatMap(collectFolderIds)];
+}
+
 export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | null } = {}) {
   const tree = useFolderTree();
   const [folder, setFolder] = useState<FolderNode | null>(null);
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(deepCaseId);
   const [creatingCase, setCreatingCase] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [showNewFolder, setShowNewFolder] = useState(false);
+  // `undefined` = the New-folder modal is closed; otherwise the value is the
+  // default parent folder id (string) or null for a top-level folder.
+  const [newFolderParent, setNewFolderParent] = useState<string | null | undefined>(undefined);
+  const [renamingFolder, setRenamingFolder] = useState<FolderNode | null>(null);
   const [folderQuery, setFolderQuery] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const [runModal, setRunModal] = useState<{
@@ -91,6 +113,8 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
   const deleteCase = useDeleteCase();
   const duplicateCase = useDuplicateCase();
   const createFolder = useCreateFolder();
+  const updateFolder = useUpdateFolder();
+  const deleteFolder = useDeleteFolder();
   const createSuite = useCreateSuite();
 
   // Auto-select a sensible default folder once the tree loads — unless a case is
@@ -188,6 +212,59 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
     flashToast(`Moved to ${target?.name ?? 'folder'}`);
   };
 
+  const handleRenameFolder = async (node: FolderNode, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === node.name) {
+      setRenamingFolder(null);
+      return;
+    }
+    try {
+      await updateFolder.mutateAsync({ id: node.id, patch: { name: trimmed } });
+      // Keep the breadcrumb/header in sync if the renamed folder is open.
+      if (folder?.id === node.id) setFolder({ ...folder, name: trimmed });
+      flashToast('Folder renamed');
+    } catch (err) {
+      flashToast(err instanceof Error ? err.message : 'Could not rename folder');
+    } finally {
+      setRenamingFolder(null);
+    }
+  };
+
+  const handleDeleteFolder = async (node: FolderNode) => {
+    const { folders, cases } = folderSubtreeStats(node);
+    const subfolders = folders - 1;
+    const parts: string[] = [];
+    if (subfolders > 0) parts.push(`${subfolders} subfolder${subfolders === 1 ? '' : 's'}`);
+    if (cases > 0) parts.push(`${cases} test case${cases === 1 ? '' : 's'}`);
+    const detail =
+      parts.length > 0
+        ? `This permanently deletes ${parts.join(' and ')} (including any runs and results) and cannot be undone.`
+        : 'This folder is empty.';
+    if (!window.confirm(`Delete “${node.name}”?\n\n${detail}`)) return;
+    try {
+      const res = await deleteFolder.mutateAsync(node.id);
+      // If the open folder was inside what we just removed, clear the selection.
+      const removed = new Set(collectFolderIds(node));
+      if (folder && removed.has(folder.id)) {
+        setFolder(null);
+        setSelectedCaseId(null);
+      }
+      flashToast(
+        res.deletedCases > 0
+          ? `Deleted folder and ${res.deletedCases} test case${res.deletedCases === 1 ? '' : 's'}`
+          : 'Folder deleted',
+      );
+    } catch (err) {
+      flashToast(err instanceof Error ? err.message : 'Could not delete folder');
+    }
+  };
+
+  const folderActions: FolderActions = {
+    onRename: (f) => setRenamingFolder(f),
+    onNewSubfolder: (f) => setNewFolderParent(f.id),
+    onDelete: handleDeleteFolder,
+  };
+
   const handleBulkDelete = async (ids: string[]) => {
     if (ids.length === 0) return;
     if (
@@ -267,7 +344,11 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
               </button>
             ) : null}
             {canAuthor ? (
-              <button className="esp-btn esp-btn-ghost" onClick={() => setShowNewFolder(true)} title="New folder">
+              <button
+                className="esp-btn esp-btn-ghost"
+                onClick={() => setNewFolderParent(folder?.id ?? null)}
+                title="New folder"
+              >
                 + Folder
               </button>
             ) : null}
@@ -284,6 +365,7 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
           nodes={tree.data ?? []}
           selectedId={folder?.id ?? null}
           filter={folderQuery}
+          actions={canAuthor ? folderActions : undefined}
           onSelect={(f) => {
             setFolder(f);
             setSelectedCaseId(null);
@@ -435,17 +517,26 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
         />
       ) : null}
 
-      {showNewFolder ? (
+      {newFolderParent !== undefined ? (
         <NewFolderModal
           tree={tree.data ?? []}
-          defaultParentId={folder?.id ?? null}
+          defaultParentId={newFolderParent}
           busy={createFolder.isPending}
-          onClose={() => setShowNewFolder(false)}
+          onClose={() => setNewFolderParent(undefined)}
           onCreate={async (name, parentId) => {
             await createFolder.mutateAsync({ name, parentId });
-            setShowNewFolder(false);
+            setNewFolderParent(undefined);
             flashToast(parentId ? 'Folder created' : 'Top-level folder created');
           }}
+        />
+      ) : null}
+
+      {renamingFolder ? (
+        <RenameFolderModal
+          folder={renamingFolder}
+          busy={updateFolder.isPending}
+          onClose={() => setRenamingFolder(null)}
+          onRename={(name) => handleRenameFolder(renamingFolder, name)}
         />
       ) : null}
 
@@ -677,6 +768,56 @@ function NewFolderModal({
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && name.trim()) submit();
+          }}
+        />
+      </div>
+    </Modal>
+  );
+}
+
+/** Rename an existing folder. */
+function RenameFolderModal({
+  folder,
+  busy,
+  onClose,
+  onRename,
+}: {
+  folder: FolderNode;
+  busy: boolean;
+  onClose: () => void;
+  onRename: (name: string) => void;
+}) {
+  const [name, setName] = useState(folder.name);
+  const canSave = name.trim().length > 0 && !busy;
+  return (
+    <Modal
+      title="Rename folder"
+      onClose={onClose}
+      maxWidth={440}
+      footer={
+        <>
+          <button className="esp-btn esp-btn-secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            className="esp-btn esp-btn-primary"
+            onClick={() => onRename(name)}
+            disabled={!canSave}
+          >
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        </>
+      }
+    >
+      <div className="esp-field" style={{ marginBottom: 0 }}>
+        <label className="esp-label">Folder name</label>
+        <input
+          className="esp-input"
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && name.trim()) onRename(name);
           }}
         />
       </div>

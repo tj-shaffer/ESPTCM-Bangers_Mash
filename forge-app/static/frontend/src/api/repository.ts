@@ -7,6 +7,7 @@ import { invokeResolver } from './client';
 import type {
   CreateFolderInput,
   CreateTestCaseInput,
+  DeleteFolderResult,
   FolderNode,
   ImportResult,
   ImportedCaseRow,
@@ -14,6 +15,7 @@ import type {
   TestCase,
   TestCaseSummary,
   TestFolder,
+  UpdateFolderInput,
   UpdateTestCaseInput,
 } from '../domain/types';
 
@@ -67,6 +69,27 @@ export function useCreateFolder() {
     mutationFn: (input: CreateFolderInput) =>
       invokeResolver<TestFolder>('repo.createFolder', { ...input }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['repo', 'folderTree'] }),
+  });
+}
+
+export function useUpdateFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: UpdateFolderInput }) =>
+      invokeResolver<TestFolder>('repo.updateFolder', { id, patch }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['repo', 'folderTree'] }),
+  });
+}
+
+export function useDeleteFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => invokeResolver<DeleteFolderResult>('repo.deleteFolder', { id }),
+    onSuccess: () => {
+      // A cascade delete can remove cases too, so refresh both lists.
+      qc.invalidateQueries({ queryKey: ['repo', 'folderTree'] });
+      qc.invalidateQueries({ queryKey: ['repo', 'cases'] });
+    },
   });
 }
 

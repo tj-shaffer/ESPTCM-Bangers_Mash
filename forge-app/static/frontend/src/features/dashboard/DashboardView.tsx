@@ -84,6 +84,7 @@ export function DashboardView({ deepRunId = null }: { deepRunId?: string | null 
   const [folderId, setFolderId] = useState('');
   const [runId, setRunId] = useState(deepRunId ?? '');
   const [testType, setTestType] = useState<TestType | ''>('');
+  const [assigneeName, setAssigneeName] = useState('');
   const [exporting, setExporting] = useState(false);
 
   // Arriving from a run summary's "View in dashboard" (#dashboard/<runId>):
@@ -97,8 +98,9 @@ export function DashboardView({ deepRunId = null }: { deepRunId?: string | null 
       ...(runId ? { runId } : {}),
       ...(testType ? { testType } : {}),
       ...(folderId ? { folderId } : {}),
+      ...(assigneeName ? { assigneeName } : {}),
     }),
-    [runId, testType, folderId],
+    [runId, testType, folderId, assigneeName],
   );
 
   const projects = useProjects();
@@ -112,8 +114,9 @@ export function DashboardView({ deepRunId = null }: { deepRunId?: string | null 
     if (folderId) parts.push(`App: ${appTree.data?.find((f) => f.id === folderId)?.name ?? folderId}`);
     if (runId) parts.push(`Run: ${runs.data?.find((r) => r.id === runId)?.name ?? runId}`);
     if (testType) parts.push(`Type: ${TEST_TYPE_LABELS[testType]}`);
+    if (assigneeName) parts.push(`Tester: ${assigneeName}`);
     return parts.length ? parts.join(' · ') : 'All runs';
-  }, [projectKey, folderId, runId, testType, appTree.data, runs.data]);
+  }, [projectKey, folderId, runId, testType, assigneeName, appTree.data, runs.data]);
 
   const runExport = async () => {
     if (!dash.data) return;
@@ -127,6 +130,10 @@ export function DashboardView({ deepRunId = null }: { deepRunId?: string | null 
   };
 
   const topFolders = appTree.data ?? [];
+  const assignees = useMemo(
+    () => [...new Set((runs.data ?? []).map((r) => r.assigneeName).filter((a): a is string => !!a))].sort(),
+    [runs.data],
+  );
 
   const filterBar = (
     <div className="esp-toolbar" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
@@ -185,6 +192,20 @@ export function DashboardView({ deepRunId = null }: { deepRunId?: string | null 
         {TEST_TYPES.map((t) => (
           <option key={t} value={t}>
             {TEST_TYPE_LABELS[t]}
+          </option>
+        ))}
+      </select>
+      <select
+        className="esp-select"
+        style={{ width: 'auto' }}
+        title="Filter by tester"
+        value={assigneeName}
+        onChange={(e) => setAssigneeName(e.target.value)}
+      >
+        <option value="">All testers</option>
+        {assignees.map((a) => (
+          <option key={a} value={a}>
+            {a}
           </option>
         ))}
       </select>
@@ -274,6 +295,24 @@ export function DashboardView({ deepRunId = null }: { deepRunId?: string | null 
                 <BarChart data={d.byEnvironment}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#EEF3F7" />
                   <XAxis dataKey="environment" fontSize={12} />
+                  <YAxis allowDecimals={false} fontSize={12} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="pass" name="Pass" stackId="a" fill={STATUS_COLOR.PASS} />
+                  <Bar dataKey="fail" name="Fail" stackId="a" fill={STATUS_COLOR.FAIL} />
+                  <Bar dataKey="other" name="Other" stackId="a" fill={STATUS_COLOR.NOT_STARTED} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : null}
+
+          {d.byAssignee.length > 0 ? (
+            <div className="esp-card">
+              <h3>Results by tester</h3>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={d.byAssignee}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#EEF3F7" />
+                  <XAxis dataKey="assignee" fontSize={12} />
                   <YAxis allowDecimals={false} fontSize={12} />
                   <Tooltip />
                   <Legend />

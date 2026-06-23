@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Spinner from '@atlaskit/spinner';
-import type { Environment, FolderNode, SuiteDetail, TestCaseStatus, TestCaseSummary } from '../../domain/types';
-import { ENVIRONMENTS, suiteId, TEAM_MEMBERS } from '../../domain/types';
+import type { Environment, FolderNode, PackageDetail, SuiteDetail, TestCaseStatus, TestCaseSummary, TestType } from '../../domain/types';
+import { ENVIRONMENTS, suiteId, TEAM_MEMBERS, TEST_TYPES, TEST_TYPE_LABELS } from '../../domain/types';
 import {
   useCase,
   useCases,
@@ -17,7 +17,7 @@ import {
   useUpdateCase,
   useUpdateFolder,
 } from '../../api/repository';
-import { useCreateRun, usePackages } from '../../api/runs';
+import { useCreateCycle, useCreateRun, usePackages } from '../../api/runs';
 import { useSuites, useSuite, useCreateSuite, useDeleteSuite } from '../../api/suites';
 import { FolderTree, type FolderActions } from './FolderTree';
 import { TestCaseList } from './TestCaseList';
@@ -95,6 +95,7 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
     defaultName: string;
     mode: 'folder' | 'selected';
   } | null>(null);
+  const [cycleModal, setCycleModal] = useState<{ candidates: TestCaseSummary[]; defaultName: string } | null>(null);
   // Save-as-suite modal carries the selected case ids; Suites modal is the
   // browse/run/delete surface for saved suites.
   const [saveSuiteIds, setSaveSuiteIds] = useState<string[] | null>(null);
@@ -316,6 +317,13 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
     setShowSuites(false);
     setRunModal({ candidates: suite.cases, defaultName: `${suite.name} — ${new Date().toLocaleDateString()}`, mode: 'selected' });
   };
+  // Cycle handoff: pick testers, spawn one duped run each, bundled in a package.
+  const openCycleFolder = () => setCycleModal({ candidates: folderCases, defaultName: folder?.name ?? 'Cycle' });
+  const handleCycleStarted = (pkg: PackageDetail) => {
+    setCycleModal(null);
+    flashToast(`Cycle “${pkg.name}” created — ${pkg.runs.length} run${pkg.runs.length === 1 ? '' : 's'}`);
+    window.location.hash = 'runs';
+  };
 
   if (tree.isLoading) {
     return (
@@ -400,6 +408,22 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
                 onClick={openRunFolder}
               >
                 <Icon name="play" /> Run folder
+              </button>
+            ) : null}
+            {canRun ? (
+              <button
+                className="esp-btn esp-btn-secondary"
+                disabled={!folder || runnableCount === 0}
+                title={
+                  !folder
+                    ? 'Select a folder first'
+                    : runnableCount === 0
+                      ? 'No active cases in this folder'
+                      : 'Start a multi-tester cycle from this folder’s active cases'
+                }
+                onClick={openCycleFolder}
+              >
+                <Icon name="package" /> Start a cycle
               </button>
             ) : null}
             {canAuthor ? (
@@ -517,6 +541,15 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
         />
       ) : null}
 
+      {cycleModal ? (
+        <CycleModal
+          candidates={cycleModal.candidates}
+          defaultName={cycleModal.defaultName}
+          onClose={() => setCycleModal(null)}
+          onCreated={handleCycleStarted}
+        />
+      ) : null}
+
       {newFolderParent !== undefined ? (
         <NewFolderModal
           tree={tree.data ?? []}
@@ -572,6 +605,151 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
  *  environment, cases already chosen by context. Assignee defaults to the current
  *  user server-side and packaging is a manager concern, so neither is asked here —
  *  the heavyweight cross-folder picker still lives in RunsView. */
+/** Start a cycle: pick testers → one duped run each, bundled into a thematic package. */
+function CycleModal({
+  candidates,
+  defaultName,
+  onClose,
+  onCreated,
+}: {
+  candidates: TestCaseSummary[];
+  defaultName: string;
+  onClose: () => void;
+  onCreated: (pkg: PackageDetail) => void;
+}) {
+  const createCycle = useCreateCycle();
+  const runnable = useMemo(() => candidates.filter((c) => c.status === 'ACTIVE'), [candidates]);
+  const [name, setName] = useState(defaultName);
+  const [environment, setEnvironment] = useState<Environment>('TEST');
+  const [packageType, setPackageType] = useState<TestType>('REGRESSION');
+  const [testers, setTesters] = useState<string[]>([]);
+  const [draft, setDraft] = useState('');
+
+  const addTester = () => {
+    const t = draft.trim();
+    if (t && !testers.includes(t)) setTesters((prev) => [...prev, t]);
+    setDraft('');
+  };
+  const removeTester = (t: string) => setTesters((prev) => prev.filter((x) => x !== t));
+
+  const canCreate = name.trim().length > 0 && testers.length > 0 && runnable.length > 0 && !createCycle.isPending;
+  const start = () => {
+    if (!canCreate) return;
+    createCycle.mutate(
+      { name: name.trim(), packageType, environment, testCaseIds: runnable.map((c) => c.id), assignees: testers },
+      { onSuccess: (pkg) => onCreated(pkg) },
+    );
+  };
+
+  return (
+    <Modal
+      title="Start a cycle"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="esp-btn esp-btn-secondary" onClick={onClose} disabled={createCycle.isPending}>
+            Cancel
+          </button>
+          <button className="esp-btn esp-btn-primary" disabled={!canCreate} onClick={start}>
+            {createCycle.isPending ? 'Creating…' : <><Icon name="package" /> Create cycle ({testers.length} run{testers.length === 1 ? '' : 's'})</>}
+          </button>
+        </>
+      }
+    >
+      <p className="esp-muted" style={{ fontSize: 13, marginTop: 0 }}>
+        A cycle is a thematic <strong>package</strong> with one run per tester (same cases). Each tester gets their own pass; the approver signs off the whole cycle once.
+      </p>
+      <div className="esp-field">
+        <label className="esp-label">Cycle name</label>
+        <input
+          className="esp-input"
+          autoFocus
+          value={name}
+          placeholder="e.g. Coupa Integration — Q3 UAT"
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+      <div className="esp-grid-2">
+        <div className="esp-field">
+          <label className="esp-label">Environment</label>
+          <select className="esp-select" value={environment} onChange={(e) => setEnvironment(e.target.value as Environment)}>
+            {ENVIRONMENTS.map((env) => (
+              <option key={env} value={env}>
+                {env}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="esp-field">
+          <label className="esp-label">Type</label>
+          <select className="esp-select" value={packageType} onChange={(e) => setPackageType(e.target.value as TestType)}>
+            {TEST_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {TEST_TYPE_LABELS[t]}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="esp-field">
+        <label className="esp-label">Testers ({testers.length})</label>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input
+            className="esp-input"
+            list="esp-cycle-testers"
+            placeholder="Add a tester (e.g. Kara)"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addTester();
+              }
+            }}
+          />
+          <button className="esp-btn esp-btn-secondary" type="button" onClick={addTester} disabled={!draft.trim()}>
+            Add
+          </button>
+          <datalist id="esp-cycle-testers">
+            {TEAM_MEMBERS.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+        </div>
+        {testers.length > 0 ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+            {testers.map((t) => (
+              <span key={t} className="esp-badge esp-badge-soft" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                {t}
+                <button
+                  type="button"
+                  onClick={() => removeTester(t)}
+                  aria-label={`Remove ${t}`}
+                  style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, font: 'inherit', lineHeight: 1 }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="esp-muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+            Add at least one tester — each gets their own run of the same cases.
+          </p>
+        )}
+      </div>
+      <p className="esp-muted" style={{ fontSize: 13, margin: '4px 0 0' }}>
+        {runnable.length > 0
+          ? `${testers.length} run${testers.length === 1 ? '' : 's'} · ${runnable.length} case${runnable.length === 1 ? '' : 's'} each, bundled into this cycle.`
+          : 'No active cases here to run.'}
+      </p>
+      {createCycle.isError ? (
+        <p className="esp-error" style={{ fontSize: 12, marginTop: 6 }}>{(createCycle.error as Error).message}</p>
+      ) : null}
+    </Modal>
+  );
+}
+
 function StartRunModal({
   candidates,
   defaultName,
@@ -634,11 +812,15 @@ function StartRunModal({
           className="esp-input"
           autoFocus
           value={name}
+          placeholder="e.g. Coupa Integration — Single Item (TEST)"
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && canStart) start();
           }}
         />
+        <p className="esp-muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+          Name it for what's tested + the scope — it's how this run is spotted in the Pipeline and dashboard.
+        </p>
       </div>
       <div className="esp-grid-2">
         <div className="esp-field">
@@ -923,7 +1105,7 @@ function SuitesModal({
       }
     >
       <p className="esp-muted" style={{ fontSize: 13, marginTop: 0 }}>
-        Reusable sets of test cases. Select cases in the repository and “Save as suite” to create one.
+        Reusable sets of <strong>test cases</strong> you can run anytime. Select cases in the repository and “Save as suite” to create one. (To bundle finished <strong>runs</strong> for approval, use Packages on the Pipeline.)
       </p>
       {suites.isLoading ? (
         <div className="esp-spinner-wrap"><Spinner size="medium" /></div>

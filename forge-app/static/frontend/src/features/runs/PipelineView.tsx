@@ -28,6 +28,30 @@ import { Icon } from '../../components/Icon';
 // at the dashboard rather than growing the column unbounded.
 const APPROVED_CAP = 25;
 
+const STAGE_INDEX: Record<RunStage, number> = Object.fromEntries(
+  RUN_STAGES.map((s, i) => [s, i]),
+) as Record<RunStage, number>;
+
+/** A board card is either a standalone run or a cycle (a package of member runs). */
+type BoardItem =
+  | { kind: 'run'; run: TestRunSummary }
+  | { kind: 'package'; pkg: PackageSummary; members: TestRunSummary[] };
+
+/** A cycle's column = its least-advanced member run (the bottleneck): it's only
+ *  "ready for approval" once every tester's run is. */
+function bottleneckStage(members: TestRunSummary[]): RunStage {
+  return members.reduce(
+    (min, r) => (STAGE_INDEX[r.stage] < STAGE_INDEX[min] ? r.stage : min),
+    members[0]?.stage ?? 'IN_PROGRESS',
+  );
+}
+
+function itemCreatedAt(item: BoardItem): string {
+  return item.kind === 'run'
+    ? item.run.createdAt
+    : item.members.reduce((m, r) => (r.createdAt > m ? r.createdAt : m), item.members[0]?.createdAt ?? '');
+}
+
 export function PipelineView({ deepRunId = null }: { deepRunId?: string | null } = {}) {
   const auth = useAuth();
   const canManageRuns = auth.can('run.create');
@@ -49,6 +73,7 @@ export function PipelineView({ deepRunId = null }: { deepRunId?: string | null }
   const [pkgApprovalOpen, setPkgApprovalOpen] = useState(false);
   const [showNewPackage, setShowNewPackage] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [expandedPkgs, setExpandedPkgs] = useState<Set<string>>(new Set());
 
   const flash = (m: string) => {
     setToast(m);
@@ -61,19 +86,35 @@ export function PipelineView({ deepRunId = null }: { deepRunId?: string | null }
     [runs.data],
   );
 
-  // Apply the package + assignee filters, then group into stage columns (newest-first).
-  const byStage = useMemo(() => {
+  // Lay out the board. In the default overview a cycle's member runs collapse into
+  // ONE package card placed in its bottleneck stage; a package- or assignee-filter
+  // switches to the flat per-run view (focused). Newest-first within each column.
+  const columns = useMemo(() => {
     let rs = runs.data ?? [];
     if (packageFilter) rs = rs.filter((r) => r.packageId === packageFilter);
     if (assigneeFilter) rs = rs.filter((r) => (r.assigneeName ?? '') === assigneeFilter);
-    const map = Object.fromEntries(RUN_STAGES.map((s) => [s, [] as TestRunSummary[]])) as Record<
-      RunStage,
-      TestRunSummary[]
-    >;
-    for (const r of rs) map[r.stage]?.push(r);
-    for (const s of RUN_STAGES) map[s].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const map = Object.fromEntries(RUN_STAGES.map((s) => [s, [] as BoardItem[]])) as Record<RunStage, BoardItem[]>;
+    if (!packageFilter && !assigneeFilter) {
+      const pkgById = new Map((packages.data ?? []).map((p) => [p.id, p]));
+      const membersByPkg = new Map<string, TestRunSummary[]>();
+      for (const r of rs) {
+        if (r.packageId && pkgById.has(r.packageId)) {
+          const arr = membersByPkg.get(r.packageId) ?? [];
+          arr.push(r);
+          membersByPkg.set(r.packageId, arr);
+        } else {
+          map[r.stage].push({ kind: 'run', run: r });
+        }
+      }
+      for (const [pid, members] of membersByPkg) {
+        map[bottleneckStage(members)].push({ kind: 'package', pkg: pkgById.get(pid)!, members });
+      }
+    } else {
+      for (const r of rs) map[r.stage].push({ kind: 'run', run: r });
+    }
+    for (const s of RUN_STAGES) map[s].sort((a, b) => itemCreatedAt(b).localeCompare(itemCreatedAt(a)));
     return map;
-  }, [runs.data, packageFilter, assigneeFilter]);
+  }, [runs.data, packages.data, packageFilter, assigneeFilter]);
 
   const selectedPackage = (packages.data ?? []).find((p) => p.id === packageFilter) ?? null;
 
@@ -109,6 +150,14 @@ export function PipelineView({ deepRunId = null }: { deepRunId?: string | null }
     if (!window.confirm(`Delete run "${r.name}"? This removes its execution results.`)) return;
     deleteRun.mutate(r.id, { onSuccess: () => flash('Run deleted') });
   };
+
+  const togglePkg = (id: string) =>
+    setExpandedPkgs((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   if (runs.isLoading) {
     return (
@@ -177,7 +226,7 @@ export function PipelineView({ deepRunId = null }: { deepRunId?: string | null }
 
       <div className="esp-board">
         {RUN_STAGES.map((stage) => {
-          const all = byStage[stage];
+          const all = columns[stage];
           const capped = stage === 'APPROVED' ? all.slice(0, APPROVED_CAP) : all;
           const hidden = all.length - capped.length;
           return (
@@ -196,18 +245,34 @@ export function PipelineView({ deepRunId = null }: { deepRunId?: string | null }
                         : 'Nothing here.'}
                   </div>
                 ) : (
-                  capped.map((r) => (
-                    <RunCard
-                      key={r.id}
-                      run={r}
-                      isManager={isManager}
-                      canSubmitStage={canSubmitStage}
-                      canManageRuns={canManageRuns}
-                      onOpen={() => openCard(r)}
-                      onAdvance={flash}
-                      onDelete={() => removeRun(r)}
-                    />
-                  ))
+                  capped.map((item) =>
+                    item.kind === 'run' ? (
+                      <RunCard
+                        key={item.run.id}
+                        run={item.run}
+                        isManager={isManager}
+                        canSubmitStage={canSubmitStage}
+                        canManageRuns={canManageRuns}
+                        onOpen={() => openCard(item.run)}
+                        onAdvance={flash}
+                        onDelete={() => removeRun(item.run)}
+                      />
+                    ) : (
+                      <PackageCard
+                        key={item.pkg.id}
+                        pkg={item.pkg}
+                        members={item.members}
+                        expanded={expandedPkgs.has(item.pkg.id)}
+                        onToggle={() => togglePkg(item.pkg.id)}
+                        onOpenRun={openCard}
+                        canApprove={canSignOffPackage}
+                        onReview={() => {
+                          setPackageFilter(item.pkg.id);
+                          setPkgApprovalOpen(true);
+                        }}
+                      />
+                    ),
+                  )
                 )}
                 {hidden > 0 ? (
                   <a className="esp-muted" href="#dashboard" style={{ fontSize: 12, padding: '4px 2px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -343,6 +408,9 @@ function RunCard({
           <span style={{ color: 'var(--esp-good)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="check" size={12} /> {run.passed}</span>
           <span style={{ color: 'var(--esp-bad)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="x" size={12} /> {run.failed}</span>
           <span style={{ color: 'var(--esp-amber)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="alert" size={12} /> {run.blocked}</span>
+          {run.enhancement > 0 ? (
+            <span title="Nice-to-have / known issues deferred to a later iteration" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="flag" size={12} /> {run.enhancement}</span>
+          ) : null}
           <span>· {run.total} cases</span>
         </div>
       )}
@@ -360,6 +428,75 @@ function RunCard({
           </button>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/** A cycle on the board: one collapsible card for a package's per-tester runs,
+ *  placed in its bottleneck stage. Collapsed shows the aggregate pass-rate %;
+ *  expanded lists each tester's run with a drill-in. */
+function PackageCard({
+  pkg,
+  members,
+  expanded,
+  onToggle,
+  onOpenRun,
+  canApprove,
+  onReview,
+}: {
+  pkg: PackageSummary;
+  members: TestRunSummary[];
+  expanded: boolean;
+  onToggle: () => void;
+  onOpenRun: (run: TestRunSummary) => void;
+  canApprove: boolean;
+  onReview: () => void;
+}) {
+  const denom = pkg.passed + pkg.failed + pkg.blocked;
+  const passRate = denom > 0 ? Math.round((pkg.passed / denom) * 100) : 0;
+  return (
+    <div className="esp-run-card" style={{ background: 'var(--esp-powder-soft)' }}>
+      <div onClick={onToggle} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ display: 'inline-flex', transform: expanded ? 'none' : 'rotate(-90deg)', transition: 'transform .15s' }}>
+          <Icon name="chevronDown" size={14} />
+        </span>
+        <Icon name="package" size={13} />
+        <span className="esp-run-card-title" style={{ flex: 1 }}>{pkg.name}</span>
+      </div>
+      <div className="esp-run-card-meta">
+        <span className="esp-badge esp-badge-soft">{TEST_TYPE_LABELS[pkg.packageType]}</span>
+        <strong>{passRate}% pass</strong>
+        <span className="esp-muted">· {members.length} tester{members.length === 1 ? '' : 's'}</span>
+      </div>
+      <div className="esp-run-card-meta">
+        <span style={{ color: 'var(--esp-good)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="check" size={12} /> {pkg.passed}</span>
+        <span style={{ color: 'var(--esp-bad)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="x" size={12} /> {pkg.failed}</span>
+        <span style={{ color: 'var(--esp-amber)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="alert" size={12} /> {pkg.blocked}</span>
+      </div>
+      {expanded ? (
+        <div style={{ marginTop: 6, borderTop: '1px solid var(--esp-border)', paddingTop: 4 }}>
+          {members.map((r) => (
+            <div
+              key={r.id}
+              onClick={() => onOpenRun(r)}
+              title="Open this tester's run"
+              style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0', fontSize: 12 }}
+            >
+              <Icon name="user" size={11} />
+              <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.assigneeName ?? r.name}</span>
+              <span className="esp-muted">{RUN_STAGE_LABEL[r.stage]}</span>
+              <ExecBadge status={r.status} />
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {canApprove ? (
+        <div className="esp-run-card-actions" onClick={(e) => e.stopPropagation()}>
+          <button className="esp-btn esp-btn-secondary" onClick={onReview}>
+            Review &amp; approve
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -414,6 +551,9 @@ function NewPackageModal({
         </>
       }
     >
+      <p className="esp-muted" style={{ fontSize: 13, marginTop: 0 }}>
+        A package bundles several finished <strong>runs</strong> for one end-to-end review &amp; sign-off — e.g. a feature tested across departments. (To save a reusable set of <strong>test cases</strong>, use Suites in the Repository.)
+      </p>
       <div className="esp-field">
         <label className="esp-label">Package name</label>
         <input

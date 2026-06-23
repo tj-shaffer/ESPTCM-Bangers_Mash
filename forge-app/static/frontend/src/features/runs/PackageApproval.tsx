@@ -32,6 +32,10 @@ export function PackageApproval({
 
   const runs = detail?.runs ?? [];
   const counts = tally(runs);
+  const passRate =
+    counts.PASS + counts.FAIL + counts.BLOCKED > 0
+      ? Math.round((counts.PASS / (counts.PASS + counts.FAIL + counts.BLOCKED)) * 100)
+      : 0;
   const anyReady = runs.some((r) => r.stage === 'READY_FOR_APPROVAL');
 
   return (
@@ -57,12 +61,14 @@ export function PackageApproval({
           </div>
 
           <h3 style={{ fontSize: 16, margin: '0 0 4px' }}>
-            {counts.FAIL === 0 && counts.BLOCKED === 0
-              ? 'All runs passed — ready to approve'
-              : `${counts.FAIL} failing · ${counts.BLOCKED} blocked across the package`}
+            {counts.PASS + counts.FAIL + counts.BLOCKED === 0
+              ? 'No runs executed yet'
+              : counts.FAIL === 0 && counts.BLOCKED === 0
+                ? 'All executed runs passed'
+                : `${counts.FAIL} failing · ${counts.BLOCKED} blocked across the package`}
           </h3>
           <div className="esp-muted" style={{ fontSize: 13, marginBottom: 14 }}>
-            {counts.PASS} passed · {counts.FAIL} failed · {counts.BLOCKED} blocked · {counts.remaining} not run
+            <strong>{passRate}% pass</strong> · {counts.PASS} passed · {counts.FAIL} failed · {counts.BLOCKED} blocked · {counts.remaining} not run
           </div>
 
           <div className="esp-label" style={{ marginBottom: 6 }}>Runs in this package ({runs.length})</div>
@@ -75,10 +81,16 @@ export function PackageApproval({
                   <div className="esp-case-main">
                     <div className="esp-case-title">{r.name}</div>
                     <div className="esp-case-meta">
+                      {r.assigneeName ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="user" size={12} /> {r.assigneeName}</span>
+                      ) : null}
                       <span>{r.environment}</span>
                       <span style={{ color: 'var(--esp-good)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="check" size={12} /> {r.passed}</span>
                       <span style={{ color: 'var(--esp-bad)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="x" size={12} /> {r.failed}</span>
                       <span style={{ color: 'var(--esp-amber)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="alert" size={12} /> {r.blocked}</span>
+                      {r.enhancement > 0 ? (
+                        <span title="Nice-to-have / known issues" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="flag" size={12} /> {r.enhancement}</span>
+                      ) : null}
                       <span className="esp-muted">· {RUN_STAGE_LABEL[r.stage]}</span>
                     </div>
                   </div>

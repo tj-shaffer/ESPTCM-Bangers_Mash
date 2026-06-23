@@ -7,6 +7,7 @@ import type {
   AddAttachmentInput,
   AttachmentContent,
   CreateDefectInput,
+  CreateCycleInput,
   CreatePackageInput,
   CreateRunInput,
   DashboardData,
@@ -128,6 +129,18 @@ export function useCreatePackage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.packages });
       qc.invalidateQueries({ queryKey: keys.runs }); // membership moves runs
+    },
+  });
+}
+
+/** Create a whole cycle: a thematic package + one duped run per tester, in one go. */
+export function useCreateCycle() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateCycleInput) => invokeResolver<PackageDetail>('cycle.create', { ...input }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.packages });
+      qc.invalidateQueries({ queryKey: keys.runs }); // new member runs appear
     },
   });
 }

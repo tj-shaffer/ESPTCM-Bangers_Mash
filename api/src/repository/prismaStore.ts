@@ -10,6 +10,7 @@ import type {
   AttachmentContent,
   CreateDefectInput,
   CreateFolderInput,
+  CreateCycleInput,
   CreatePackageInput,
   CreateRunInput,
   CreateSuiteInput,
@@ -20,6 +21,7 @@ import type {
   ReportRow,
   DefectView,
   Environment,
+  AssigneeResult,
   EnvironmentResult,
   ExecutionDetail,
   ExecutionStatus,
@@ -66,6 +68,15 @@ function rollup(statuses: ExecutionStatus[]): ExecutionStatus {
   return 'IN_PROGRESS';
 }
 
+/** The QC pipeline collapsed the retired COMPLETED_BY_TESTER ("Submitted for QC")
+ *  stage into IN_QC_REVIEW (2026-06-23) — a tester's hand-off now lands straight in
+ *  review. The Prisma enum keeps the old value to avoid a destructive migration, so
+ *  any legacy row is mapped forward on read; the rest of the app only sees the four
+ *  live stages. */
+function normalizeStage(stage: string): RunStage {
+  return (stage === 'COMPLETED_BY_TESTER' ? 'IN_QC_REVIEW' : stage) as RunStage;
+}
+
 /** Build a TestRunSummary from a cycle row that includes executions + package. */
 function runSummaryOf(c: {
   id: string;
@@ -77,7 +88,7 @@ function runSummaryOf(c: {
   packageId: string | null;
   approverName: string | null;
   approvedAt: Date | null;
-  executions: { status: string }[];
+  executions: { status: string; stepResults?: { status: string }[] }[];
   package?: { name: string } | null;
 }): TestRunSummary {
   const statuses = c.executions.map((e) => e.status as ExecutionStatus);
@@ -92,8 +103,14 @@ function runSummaryOf(c: {
     failed: count('FAIL'),
     blocked: count('BLOCKED'),
     notStarted: count('NOT_STARTED'),
+    // "Known issues" = cases carrying a deferred Nice-to-have item. ENHANCEMENT is
+    // a step disposition (a case with one still rolls up to PASS), so count cases
+    // whose own status or any step is ENHANCEMENT — not the case-status tally.
+    enhancement: c.executions.filter(
+      (e) => e.status === 'ENHANCEMENT' || (e.stepResults ?? []).some((s) => s.status === 'ENHANCEMENT'),
+    ).length,
     createdAt: c.createdAt.toISOString(),
-    stage: c.stage as RunStage,
+    stage: normalizeStage(c.stage),
     assigneeName: c.assigneeName,
     packageId: c.packageId,
     packageName: c.package?.name ?? null,
@@ -505,7 +522,7 @@ export class PrismaStore implements TestCaseStore {
   async listRuns(projectKey = DEFAULT_PROJECT): Promise<TestRunSummary[]> {
     const cycles = await prisma.testCycle.findMany({
       where: { testPlan: { projectKey } },
-      include: { executions: { select: { status: true } }, package: { select: { name: true } } },
+      include: { executions: { select: { status: true, stepResults: { select: { status: true } } } }, package: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     });
     return cycles.map((c) => runSummaryOf(c));
@@ -580,7 +597,7 @@ export class PrismaStore implements TestCaseStore {
       environment: cycle.environment as Environment,
       status: rollup(executions.map((e) => e.status)),
       createdAt: cycle.createdAt.toISOString(),
-      stage: cycle.stage as RunStage,
+      stage: normalizeStage(cycle.stage),
       assigneeName: cycle.assigneeName,
       packageId: cycle.packageId,
       packageName: cycle.package?.name ?? null,
@@ -692,12 +709,44 @@ export class PrismaStore implements TestCaseStore {
     return (await this.getPackage(pkg.id)) as PackageDetail;
   }
 
+  /**
+   * Create a cycle: a thematic package + one duplicated run per tester (same
+   * cases). Reuses createRun per tester so executions/step-results are built the
+   * same way. Distinctive arms are added later via run.create with this packageId.
+   */
+  async createCycle(input: CreateCycleInput, owner: string, projectKey = DEFAULT_PROJECT): Promise<PackageDetail> {
+    const pkg = await prisma.package.create({
+      data: {
+        name: input.name.trim() || 'Untitled cycle',
+        packageType: (input.packageType ?? 'REGRESSION') as TestType,
+        ownerAccountId: owner,
+        projectKey,
+      },
+    });
+    const roster = input.assignees.map((a) => a.trim()).filter(Boolean);
+    const testers = roster.length > 0 ? roster : [''];
+    for (const tester of testers) {
+      await this.createRun(
+        {
+          name: tester ? `${input.name.trim()} — ${tester}` : input.name.trim(),
+          environment: input.environment,
+          testCaseIds: input.testCaseIds,
+          assigneeName: tester || undefined,
+          packageId: pkg.id,
+        },
+        owner,
+        projectKey,
+      );
+    }
+    return (await this.getPackage(pkg.id)) as PackageDetail;
+  }
+
   async getPackage(id: string): Promise<PackageDetail | null> {
     const pkg = await prisma.package.findUnique({
       where: { id },
       include: {
         cycles: {
-          include: { executions: { select: { status: true } }, package: { select: { name: true } } },
+          include: { executions: { select: { status: true, stepResults: { select: { status: true } } } }, package: { select: { name: true } } },
           orderBy: { createdAt: 'asc' },
         },
       },
@@ -1091,6 +1140,7 @@ export class PrismaStore implements TestCaseStore {
     const cycleWhere: Prisma.TestCycleWhereInput = projectKey ? { testPlan: { projectKey } } : {};
     if (filters.runId) cycleWhere.id = filters.runId;
     else if (filters.packageId) cycleWhere.packageId = filters.packageId;
+    if (filters.assigneeName) cycleWhere.assigneeName = filters.assigneeName;
     const cycles = await prisma.testCycle.findMany({ where: cycleWhere, select: { id: true } });
     const cycleIds = cycles.map((c) => c.id);
     const execWhere: Prisma.TestExecutionWhereInput = { testCycleId: { in: cycleIds } };
@@ -1111,7 +1161,7 @@ export class PrismaStore implements TestCaseStore {
       where: execWhere,
       include: {
         testCase: { select: { title: true, vendors: true } },
-        testCycle: { select: { name: true } },
+        testCycle: { select: { name: true, assigneeName: true } },
       },
     });
 
@@ -1156,6 +1206,17 @@ export class PrismaStore implements TestCaseStore {
       })
       .filter((r) => r.pass + r.fail + r.other > 0);
 
+    // Results by tester — group executions by their run's assignee (#6).
+    const assigneeMap = new Map<string, { pass: number; fail: number; other: number }>();
+    for (const e of executions) {
+      const who = e.testCycle.assigneeName ?? 'Unassigned';
+      const bucket: 'pass' | 'fail' | 'other' = e.status === 'PASS' ? 'pass' : e.status === 'FAIL' ? 'fail' : 'other';
+      const row = assigneeMap.get(who) ?? { pass: 0, fail: 0, other: 0 };
+      row[bucket]++;
+      assigneeMap.set(who, row);
+    }
+    const byAssignee: AssigneeResult[] = [...assigneeMap.entries()].map(([assignee, v]) => ({ assignee, ...v }));
+
     const recent = [...executions]
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
       .slice(0, 8)
@@ -1176,6 +1237,7 @@ export class PrismaStore implements TestCaseStore {
       coverage: { executed: executedCaseIds.size, total: totalCases },
       byVendor,
       byEnvironment,
+      byAssignee,
       recent,
     };
   }
@@ -1207,7 +1269,7 @@ export class PrismaStore implements TestCaseStore {
       defectCount: e.defects.length,
       jiraKeys: e.defects.map((d) => d.jiraIssueKey).filter((k): k is string => !!k),
       assigneeName: e.testCycle.assigneeName,
-      stage: e.testCycle.stage as RunStage,
+      stage: normalizeStage(e.testCycle.stage),
       updatedAt: e.updatedAt.toISOString(),
     }));
   }

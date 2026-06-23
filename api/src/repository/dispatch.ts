@@ -120,10 +120,11 @@ export async function dispatch(
 
     case 'run.setStage': {
       const { id, stage } = parse(key, payload);
-      // A tester may only submit their run for QC (→ COMPLETED_BY_TESTER); every
-      // other transition — QC review, ready-for-approval, sending it back — is
-      // manager-controlled. See ENHANCEMENTS #10.
-      if (!isManager(role) && stage !== 'COMPLETED_BY_TESTER') {
+      // A tester may only hand their run off for QC (→ IN_QC_REVIEW); every other
+      // transition — ready-for-approval, sending it back — is manager-controlled.
+      // The "Submitted for QC" stage was collapsed into review (2026-06-23), so a
+      // tester's hand-off now lands directly in IN_QC_REVIEW. See ENHANCEMENTS #10.
+      if (!isManager(role) && stage !== 'IN_QC_REVIEW') {
         throw new DispatchError('Only a manager can advance a run through QC.', 403);
       }
       const updated = await store.setRunStage(id, stage);
@@ -163,6 +164,10 @@ export async function dispatch(
 
     case 'package.create':
       return store.createPackage(parse(key, payload), accountId);
+
+    case 'cycle.create':
+      // One action → a thematic package + one duped run per tester (FE-3 keystone).
+      return store.createCycle(parse(key, payload), accountId);
 
     case 'package.get':
       return store.getPackage(parse(key, payload).id);

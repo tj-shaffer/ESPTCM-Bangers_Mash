@@ -10,6 +10,7 @@ import type {
   AttachmentContent,
   CreateDefectInput,
   CreateFolderInput,
+  CreateCycleInput,
   CreatePackageInput,
   CreateRunInput,
   CreateSuiteInput,
@@ -83,6 +84,8 @@ export interface TestCaseStore {
   // packages (group runs for end-to-end review)
   listPackages(projectKey?: string): Promise<PackageSummary[]>;
   createPackage(input: CreatePackageInput, ownerAccountId: string, projectKey?: string): Promise<PackageDetail>;
+  /** Create a thematic cycle: a package + one duplicated run per tester (same cases). */
+  createCycle(input: CreateCycleInput, ownerAccountId: string, projectKey?: string): Promise<PackageDetail>;
   getPackage(id: string): Promise<PackageDetail | null>;
   deletePackage(id: string): Promise<boolean>;
   signOffPackage(id: string, input: SignOffInput): Promise<PackageDetail | null>;

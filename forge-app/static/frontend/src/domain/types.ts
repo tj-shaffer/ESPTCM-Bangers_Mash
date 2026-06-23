@@ -194,17 +194,18 @@ export const EXEC_STATUS_LABEL: Record<ExecutionStatus, string> = {
   ENHANCEMENT: 'Nice to have',
 };
 
-/** Run workflow position (QC review pipeline), independent of pass/fail health. */
+/** Run workflow position (QC review pipeline), independent of pass/fail health.
+ *  A tester's hand-off lands straight in IN_QC_REVIEW — the old COMPLETED_BY_TESTER
+ *  ("Submitted for QC") stage was collapsed into review per stakeholder feedback
+ *  (2026-06-23). Legacy rows are normalized to IN_QC_REVIEW server-side. */
 export type RunStage =
   | 'IN_PROGRESS'
-  | 'COMPLETED_BY_TESTER'
   | 'IN_QC_REVIEW'
   | 'READY_FOR_APPROVAL'
   | 'APPROVED';
 
 export const RUN_STAGES: RunStage[] = [
   'IN_PROGRESS',
-  'COMPLETED_BY_TESTER',
   'IN_QC_REVIEW',
   'READY_FOR_APPROVAL',
   'APPROVED',
@@ -212,7 +213,6 @@ export const RUN_STAGES: RunStage[] = [
 
 export const RUN_STAGE_LABEL: Record<RunStage, string> = {
   IN_PROGRESS: 'In progress',
-  COMPLETED_BY_TESTER: 'Submitted for QC',
   IN_QC_REVIEW: 'In QC review',
   READY_FOR_APPROVAL: 'Ready for approval',
   APPROVED: 'Approved',
@@ -245,6 +245,9 @@ export interface TestRunSummary {
   failed: number;
   blocked: number;
   notStarted: number;
+  /** Count of ENHANCEMENT ("Nice to have") items — non-blocking known issues
+   *  deferred to a later iteration. Surfaced as a badge on the run card. */
+  enhancement: number;
   createdAt: string;
   stage: RunStage;
   assigneeName?: string | null;
@@ -270,6 +273,20 @@ export interface CreatePackageInput {
   packageType?: TestType;
   /** Runs to attach to the new package. */
   runIds?: string[];
+}
+
+/**
+ * Create a cycle in one action: a thematic Package + one duplicated run per tester
+ * (same cases). Alex signs off the package once; distinctive arms join later via a
+ * run's packageId.
+ */
+export interface CreateCycleInput {
+  name: string;
+  packageType?: TestType;
+  testCaseIds: string[];
+  /** One run is created per tester (same cases). */
+  assignees: string[];
+  environment?: Environment;
 }
 
 export interface PackageSummary {
@@ -451,6 +468,14 @@ export interface EnvironmentResult {
   other: number;
 }
 
+/** Pass/fail rollup for one tester (run assignee) — drives the "Results by tester" view. */
+export interface AssigneeResult {
+  assignee: string;
+  pass: number;
+  fail: number;
+  other: number;
+}
+
 export interface DashboardData {
   totalCases: number;
   totalRuns: number;
@@ -460,6 +485,7 @@ export interface DashboardData {
   coverage: { executed: number; total: number };
   byVendor: VendorResult[];
   byEnvironment: EnvironmentResult[];
+  byAssignee: AssigneeResult[];
   recent: { id: string; title: string; status: ExecutionStatus; runName: string; at: string }[];
 }
 
@@ -470,6 +496,8 @@ export interface DashboardFilters {
   testType?: TestType;
   /** Scope to a top-level application folder (and its descendants). */
   folderId?: string;
+  /** Scope to a single tester (a run's assigneeName) — Vileyka's "by test user". */
+  assigneeName?: string;
 }
 
 /** One per-execution detail row for the exported results artifact. */

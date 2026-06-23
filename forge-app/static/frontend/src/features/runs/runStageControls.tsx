@@ -29,13 +29,8 @@ export function StageControls({
   return (
     <>
       {run.stage === 'IN_PROGRESS' && canSubmit ? (
-        <button className="esp-btn esp-btn-secondary" disabled={busy} onClick={() => go('COMPLETED_BY_TESTER', 'Submitted for QC')}>
-          Submit for QC
-        </button>
-      ) : null}
-      {isManager && run.stage === 'COMPLETED_BY_TESTER' ? (
-        <button className="esp-btn esp-btn-primary" disabled={busy} onClick={() => go('IN_QC_REVIEW', 'QC review started')}>
-          Start QC review
+        <button className="esp-btn esp-btn-secondary" disabled={busy} onClick={() => go('IN_QC_REVIEW', 'Submitted for QC review')}>
+          Submit for QC review
         </button>
       ) : null}
       {isManager && run.stage === 'IN_QC_REVIEW' ? (

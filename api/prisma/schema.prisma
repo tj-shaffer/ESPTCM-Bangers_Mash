@@ -83,6 +83,10 @@ enum ExecutionStatus {
 
 // Workflow position of a run, independent of its pass/fail health. Drives the
 // QC review queue and the path to approval. See ENHANCEMENTS #10/#11.
+// NOTE: COMPLETED_BY_TESTER is RETIRED (2026-06-23). A tester's hand-off now lands
+// straight in IN_QC_REVIEW; the value is kept only so existing rows stay valid and
+// is normalized to IN_QC_REVIEW on read (prismaStore `normalizeStage`). Do not use
+// it for new transitions. Drop it in a later migration once no rows reference it.
 enum RunStage {
   IN_PROGRESS
   COMPLETED_BY_TESTER

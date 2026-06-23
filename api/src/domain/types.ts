@@ -143,10 +143,13 @@ export type ExecutionStatus =
   | 'SKIPPED'
   | 'ENHANCEMENT';
 
-/** Run workflow position (QC review pipeline), independent of pass/fail health. */
+/** Run workflow position (QC review pipeline), independent of pass/fail health.
+ *  Tester hand-off lands straight in IN_QC_REVIEW; the old COMPLETED_BY_TESTER
+ *  ("Submitted for QC") stage was collapsed into review per stakeholder feedback
+ *  (2026-06-23). The Prisma enum keeps the value for legacy rows, which are
+ *  normalized to IN_QC_REVIEW on read (see prismaStore `normalizeStage`). */
 export type RunStage =
   | 'IN_PROGRESS'
-  | 'COMPLETED_BY_TESTER'
   | 'IN_QC_REVIEW'
   | 'READY_FOR_APPROVAL'
   | 'APPROVED';
@@ -178,6 +181,9 @@ export interface TestRunSummary {
   failed: number;
   blocked: number;
   notStarted: number;
+  /** Count of ENHANCEMENT ("Nice to have") items — non-blocking known issues
+   *  deferred to a later iteration. Surfaced as a badge on the run card. */
+  enhancement: number;
   createdAt: string;
   stage: RunStage;
   assigneeName?: string | null;
@@ -203,6 +209,20 @@ export interface CreatePackageInput {
   packageType?: TestType;
   /** Runs to attach to the new package. */
   runIds?: string[];
+}
+
+/**
+ * Create a whole cycle in one action: a thematic Package plus one duplicated run
+ * per tester (same cases). The keystone of the multi-tester model — Alex signs off
+ * the package once. Distinctive arms are added later via run.create's packageId.
+ */
+export interface CreateCycleInput {
+  name: string;
+  packageType?: TestType;
+  testCaseIds: string[];
+  /** One run is created per tester (same cases — a "duped" cycle). */
+  assignees: string[];
+  environment?: Environment;
 }
 
 export interface PackageSummary {
@@ -379,6 +399,14 @@ export interface EnvironmentResult {
   other: number;
 }
 
+/** Pass/fail rollup for one tester (run assignee) — drives the "Results by tester" view. */
+export interface AssigneeResult {
+  assignee: string;
+  pass: number;
+  fail: number;
+  other: number;
+}
+
 export interface DashboardData {
   totalCases: number;
   totalRuns: number;
@@ -388,6 +416,7 @@ export interface DashboardData {
   coverage: { executed: number; total: number };
   byVendor: VendorResult[];
   byEnvironment: EnvironmentResult[];
+  byAssignee: AssigneeResult[];
   recent: { id: string; title: string; status: ExecutionStatus; runName: string; at: string }[];
 }
 
@@ -398,6 +427,8 @@ export interface DashboardFilters {
   testType?: TestType;
   /** Scope to a top-level application folder (and its descendants). */
   folderId?: string;
+  /** Scope to a single tester (a run's assigneeName) — Vileyka's "by test user". */
+  assigneeName?: string;
 }
 
 /** One per-execution detail row for the exported results artifact. */

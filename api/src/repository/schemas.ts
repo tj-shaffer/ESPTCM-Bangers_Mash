@@ -38,7 +38,7 @@ const executionStatus = z.enum([
   'SKIPPED',
   'ENHANCEMENT',
 ]);
-const runStage = z.enum(['IN_PROGRESS', 'COMPLETED_BY_TESTER', 'IN_QC_REVIEW', 'READY_FOR_APPROVAL', 'APPROVED'], {
+const runStage = z.enum(['IN_PROGRESS', 'IN_QC_REVIEW', 'READY_FOR_APPROVAL', 'APPROVED'], {
   errorMap: () => ({ message: 'A valid run stage is required' }),
 });
 const role = z.enum(['SUPER_ADMIN', 'TEST_MANAGER', 'TEST_AUTHOR', 'FIELD_OPERATOR', 'OBSERVER'], {
@@ -165,6 +165,13 @@ export const schemas = {
     name: req('Package name is required'),
     packageType: testType.optional(),
     runIds: z.array(z.string()).optional(),
+  }),
+  'cycle.create': z.object({
+    name: req('Cycle name is required'),
+    packageType: testType.optional(),
+    testCaseIds: z.array(z.string()).min(1, 'Select at least one test case'),
+    assignees: z.array(z.string()).min(1, 'Assign at least one tester'),
+    environment: environment.optional(),
   }),
   'package.delete': z.object({ id: req('Package id is required') }),
   'package.signOff': z.object({

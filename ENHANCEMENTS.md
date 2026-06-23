@@ -100,3 +100,63 @@ checkbox flow covers the need — so it was parked as a UX upgrade.
 are the higher-value half (real reuse) and are fully verifiable offline — worth
 doing first when this is picked back up, with drag-and-drop as the follow-on
 polish.
+
+---
+
+## FE-3 — Multi-tester cycles (the "Coupa, 3 testers" model)
+
+**Status:** **Largely shipped** — design resolved 2026-06-23; **#1, #2, #3, #6 built and
+verified** (mock mode). Only #4 (case×user matrix) is deferred and #5 (reuse) rides on
+Suites. Originated from the June 23 "Testing Applications" demo: Mohammad wanted to
+assign the same scripts to several testers; Vileyka wanted Alex's approval + dashboard to
+show results **by test user**.
+
+### Resolved model
+
+A **cycle = a thematic Package** containing **one run per tester**. This reuses existing
+constructs — **no case×tester execution surgery**. The design questions landed as:
+
+- **Sign-off is once, at the package** (not per run). `signOffPackage` already cascades
+  approval to the member runs.
+- **Overall status = an aggregate pass-rate %**, amalgamated across all member runs
+  (mixed pass/fail is just reflected in the %, not a single PASS/FAIL).
+- **Grouping reuses `Package`**, used *thematically* per cycle. A package can hold
+  **duplicative** runs (same cases, N testers — Coupa) *and/or* **distinctive** runs
+  (different scripts per department — Discount Thresholds), mixed. Not a barrier: the
+  package just aggregates its runs; the only duplicative-only view (case×user matrix)
+  degrades gracefully when runs don't share cases.
+- **Per-user view** = Alex drills into each member run (each run is one tester).
+- **Reusability (#5)** lives at the **run/case-set** level = **Suites**. A cycle can be
+  re-run next quarter by starting it from a saved Suite + that quarter's tester roster.
+
+### Creation flow (fixes the Repository/Pipeline disjoint)
+
+Cycle creation **originates in the Repository** (where the cases live), not on the
+Pipeline. Select cases → **"Start a cycle"** → name it + assign N testers → one
+`createRun` per tester, all bundled into a new package, atomically. Distinctive arms
+join later via a run's `packageId` (the existing "Add to package" dropdown). The
+Pipeline becomes a **tracking + approval** surface, not an assembly bench.
+
+### Build status
+
+- ✅ **#1 Start a cycle (keystone).** `cycle.create` dispatch → `store.createCycle`
+  (package + one duped run per tester); `CreateCycleInput`; `useCreateCycle`; the
+  **"Start a cycle"** button + `CycleModal` (tester picker) in `RepositoryView`; mock +
+  permissions (`AUTHOR`) + zod. Verified in mock mode: 3 testers → PKG + 3 per-tester
+  runs, grouped on the board.
+- ✅ **#3 Package approval, per-user drill-in.** `PackageApproval` lists each member
+  run with its **tester (assignee)** + known-issue count, an aggregate **pass-rate %**,
+  and a clickable drill-in to each tester's run. (Also fixed the misleading "all runs
+  passed" heading for not-yet-executed packages.)
+- ✅ **#2 Package-as-unit on the Pipeline.** On the overview board a cycle's per-tester
+  runs collapse into ONE **`PackageCard`** placed in its **bottleneck stage** (the
+  least-advanced member — a cycle is only "ready for approval" once every tester's run
+  is), showing the aggregate **pass-rate %** + tester count; expand for the per-tester
+  rows + drill-in. Frontend-only (derived in `PipelineView`, no schema change). A
+  package- or assignee-filter still drops to the flat per-run view.
+- ✅ **#6 Dashboard by-user filter** — a "Filter by tester" dropdown + a "Results by
+  tester" chart; `DashboardFilters.assigneeName` + `DashboardData.byAssignee`, wired end
+  to end (store + mock).
+- ⏸ **#4 case×user matrix** — held until the above land (Vileyka's "results by test case
+  and by user"); only applies to duplicative cycles.
+- ↻ **#5 reusability** — via Suites (above); no new construct.

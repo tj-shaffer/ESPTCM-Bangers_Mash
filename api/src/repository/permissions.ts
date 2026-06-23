@@ -73,6 +73,7 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'run.update': AUTHOR,
   'run.delete': AUTHOR,
   'package.create': AUTHOR,
+  'cycle.create': AUTHOR,
   'package.delete': AUTHOR,
   'suite.create': AUTHOR,
   'suite.update': AUTHOR,

@@ -18,6 +18,7 @@ import type {
   CreateFolderInput,
   DeleteFolderResult,
   UpdateFolderInput,
+  CreateCycleInput,
   CreatePackageInput,
   CreateRunInput,
   CreateTestCaseInput,
@@ -402,6 +403,11 @@ class MockStore {
       failed: statuses.filter((s) => s === 'FAIL').length,
       blocked: statuses.filter((s) => s === 'BLOCKED').length,
       notStarted: statuses.filter((s) => s === 'NOT_STARTED').length,
+      // Known issues: cases carrying a deferred Nice-to-have step (a case with one
+      // still rolls up to PASS), so look at step status, not just the case status.
+      enhancement: execs.filter(
+        (e) => execStatus(e) === 'ENHANCEMENT' || e.steps.some((s) => s.status === 'ENHANCEMENT'),
+      ).length,
       createdAt: r.createdAt,
       stage: r.stage,
       assigneeName: r.assigneeName ?? null,
@@ -733,6 +739,29 @@ class MockStore {
     return this.getPackage(p.id)!;
   }
 
+  createCycle(input: CreateCycleInput): PackageDetail {
+    const p: MockPackage = {
+      id: uuid(),
+      displayId: this.nextPkgId++,
+      name: input.name.trim(),
+      packageType: input.packageType ?? 'REGRESSION',
+      createdAt: nowIso(),
+    };
+    this.packages.push(p);
+    const roster = input.assignees.map((a) => a.trim()).filter(Boolean);
+    const testers = roster.length > 0 ? roster : [''];
+    for (const tester of testers) {
+      this.createRun({
+        name: tester ? `${input.name.trim()} — ${tester}` : input.name.trim(),
+        environment: input.environment,
+        testCaseIds: input.testCaseIds,
+        assigneeName: tester || undefined,
+        packageId: p.id,
+      });
+    }
+    return this.getPackage(p.id)!;
+  }
+
   deletePackage(id: string): boolean {
     const before = this.packages.length;
     this.packages = this.packages.filter((p) => p.id !== id);
@@ -855,6 +884,7 @@ class MockStore {
     let runs = this.runs;
     if (filters.packageId) runs = runs.filter((r) => r.packageId === filters.packageId);
     if (filters.runId) runs = runs.filter((r) => r.id === filters.runId);
+    if (filters.assigneeName) runs = runs.filter((r) => r.assigneeName === filters.assigneeName);
     const runIds = new Set(runs.map((r) => r.id));
     let execs = this.execs.filter((e) => runIds.has(e.runId));
     if (filters.testType) {
@@ -893,6 +923,7 @@ class MockStore {
 
     const vendorMap = new Map<VendorCode, { pass: number; fail: number; other: number }>();
     const envMap = new Map<Environment, { pass: number; fail: number; other: number }>();
+    const assigneeMap = new Map<string, { pass: number; fail: number; other: number }>();
     for (const e of execs) {
       const st = execStatus(e);
       const bucket = st === 'PASS' ? 'pass' : st === 'FAIL' ? 'fail' : 'other';
@@ -905,6 +936,10 @@ class MockStore {
       const er = envMap.get(e.environment) ?? { pass: 0, fail: 0, other: 0 };
       er[bucket] += 1;
       envMap.set(e.environment, er);
+      const who = this.runs.find((r) => r.id === e.runId)?.assigneeName ?? 'Unassigned';
+      const ar = assigneeMap.get(who) ?? { pass: 0, fail: 0, other: 0 };
+      ar[bucket] += 1;
+      assigneeMap.set(who, ar);
     }
 
     const recent = [...execs]
@@ -927,6 +962,7 @@ class MockStore {
       coverage: { executed: new Set(execs.filter((e) => execStatus(e) !== 'NOT_STARTED').map((e) => e.testCaseId)).size, total: this.cases.length },
       byVendor: [...vendorMap.entries()].map(([vendor, v]) => ({ vendor, ...v })),
       byEnvironment: [...envMap.entries()].map(([environment, v]) => ({ environment, ...v })),
+      byAssignee: [...assigneeMap.entries()].map(([assignee, v]) => ({ assignee, ...v })),
       recent,
     };
   }
@@ -1278,6 +1314,8 @@ export async function mockInvoke<T>(key: string, payload: Record<string, unknown
       return store.getPackage(p.id) as T;
     case 'package.create':
       return store.createPackage(p as unknown as CreatePackageInput) as T;
+    case 'cycle.create':
+      return store.createCycle(p as unknown as CreateCycleInput) as T;
     case 'package.delete':
       return { deleted: store.deletePackage(p.id) } as T;
     case 'package.signOff':

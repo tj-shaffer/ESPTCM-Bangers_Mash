@@ -224,7 +224,7 @@ function RunSummary({
               className="esp-btn esp-btn-ghost"
               style={{ marginRight: 'auto' }}
               disabled={setStage.isPending}
-              onClick={() => setStage.mutate({ id: detail.id, stage: 'COMPLETED_BY_TESTER' }, { onSuccess: onExit })}
+              onClick={() => setStage.mutate({ id: detail.id, stage: 'IN_QC_REVIEW' }, { onSuccess: onExit })}
             >
               {setStage.isPending ? 'Submitting…' : 'Hand off for QC review'}
             </button>

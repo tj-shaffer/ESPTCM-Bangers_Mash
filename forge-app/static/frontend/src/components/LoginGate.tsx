@@ -126,7 +126,7 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
             </button>
             <a
               className="esp-btn esp-btn-secondary"
-              href="mailto:hello@secondninelabs.com?subject=Bangers%20%26%20Mash%20walkthrough"
+              href="mailto:second-9-labs-f83d54@thirdbrain-os.com?subject=Bangers%20%26%20Mash%20walkthrough"
             >
               Book a walkthrough
             </a>

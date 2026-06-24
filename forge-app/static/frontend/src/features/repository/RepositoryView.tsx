@@ -342,15 +342,9 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
         <div className="esp-sidebar-head">
           <span className="esp-sidebar-title">Repository</span>
           <div style={{ display: 'flex', gap: 2 }}>
-            {canRun ? (
-              <button
-                className="esp-btn esp-btn-ghost"
-                onClick={() => setShowSuites(true)}
-                title="Browse and run saved suites (reusable case sets)"
-              >
-                <Icon name="copy" /> Suites
-              </button>
-            ) : null}
+            {/* Suites hidden 2026-06-23 — low end-user demand. Restore this button
+                (and the `onSaveSuite` prop below) to bring it back; the SuitesModal,
+                SaveSuiteModal, and suite hooks are left intact. */}
             {canAuthor ? (
               <button
                 className="esp-btn esp-btn-ghost"
@@ -468,7 +462,7 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
                       onDelete: handleBulkDelete,
                       onSetStatus: handleBulkSetStatus,
                       onRun: canRun ? openRunSelected : undefined,
-                      onSaveSuite: (ids) => setSaveSuiteIds(ids),
+                      // onSaveSuite: (ids) => setSaveSuiteIds(ids), // Suites hidden 2026-06-23 (see sidebar note)
                       busy: deleteCase.isPending || updateCase.isPending,
                     }
                   : undefined
@@ -605,7 +599,7 @@ export function RepositoryView({ deepCaseId = null }: { deepCaseId?: string | nu
  *  environment, cases already chosen by context. Assignee defaults to the current
  *  user server-side and packaging is a manager concern, so neither is asked here —
  *  the heavyweight cross-folder picker still lives in RunsView. */
-/** Start a cycle: pick testers → one duped run each, bundled into a thematic package. */
+/** Start a cycle: pick testers → one duped run each, bundled into a thematic cycle. */
 function CycleModal({
   candidates,
   defaultName,
@@ -657,7 +651,7 @@ function CycleModal({
       }
     >
       <p className="esp-muted" style={{ fontSize: 13, marginTop: 0 }}>
-        A cycle is a thematic <strong>package</strong> with one run per tester (same cases). Each tester gets their own pass; the approver signs off the whole cycle once.
+        A cycle is the same test cases run by several testers — one run each. Each tester gets their own pass; the approver signs off the whole cycle once.
       </p>
       <div className="esp-field">
         <label className="esp-label">Cycle name</label>
@@ -849,14 +843,14 @@ function StartRunModal({
           </datalist>
         </div>
       </div>
-      {/* Packages bundle existing runs for approval — only meaningful once some
-          exist, so we hide this for the common first-run case to avoid confusion.
-          Packages are assembled from the Pipeline board. */}
+      {/* Add this run to an existing cycle (e.g. a distinctive arm — a different
+          department's run joining a theme). Only meaningful once a cycle exists, so
+          hidden for the common first-run case. Cycles are created via "Start a cycle". */}
       {(packages.data ?? []).length > 0 ? (
         <div className="esp-field">
-          <label className="esp-label">Add to package (optional)</label>
+          <label className="esp-label">Add to cycle (optional)</label>
           <select className="esp-select" value={packageId} onChange={(e) => setPackageId(e.target.value)}>
-            <option value="">No package</option>
+            <option value="">No cycle</option>
             {(packages.data ?? []).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}

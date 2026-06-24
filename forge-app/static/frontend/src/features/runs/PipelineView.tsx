@@ -6,16 +6,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Spinner from '@atlaskit/spinner';
-import { useCreatePackage, useDeleteRun, usePackages, useRuns } from '../../api/runs';
-import {
-  RUN_STAGES,
-  RUN_STAGE_LABEL,
-  TEST_TYPES,
-  TEST_TYPE_LABELS,
-  pkgId,
-} from '../../domain/types';
-import type { PackageSummary, RunStage, TestRunSummary, TestType } from '../../domain/types';
-import { Modal, Toast } from '../../components/ui';
+import { useDeleteRun, usePackages, useRuns } from '../../api/runs';
+import { RUN_STAGES, RUN_STAGE_LABEL, TEST_TYPE_LABELS, pkgId } from '../../domain/types';
+import type { PackageSummary, RunStage, TestRunSummary } from '../../domain/types';
+import { Toast } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { ExecBadge } from './ExecutionRunner';
 import { RunPlayer } from './RunPlayer';
@@ -55,7 +49,6 @@ function itemCreatedAt(item: BoardItem): string {
 export function PipelineView({ deepRunId = null }: { deepRunId?: string | null } = {}) {
   const auth = useAuth();
   const canManageRuns = auth.can('run.create');
-  const canCreatePackage = auth.can('package.create');
   const canSignOffPackage = auth.can('package.signOff');
   const isManager = auth.hasRole('SUPER_ADMIN', 'TEST_MANAGER');
   const canSubmitStage = auth.can('run.setStage');
@@ -71,7 +64,6 @@ export function PipelineView({ deepRunId = null }: { deepRunId?: string | null }
   const [packageFilter, setPackageFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [pkgApprovalOpen, setPkgApprovalOpen] = useState(false);
-  const [showNewPackage, setShowNewPackage] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [expandedPkgs, setExpandedPkgs] = useState<Set<string>>(new Set());
 
@@ -174,11 +166,11 @@ export function PipelineView({ deepRunId = null }: { deepRunId?: string | null }
         <select
           className="esp-select"
           style={{ width: 'auto' }}
-          title="Filter by package"
+          title="Filter by cycle"
           value={packageFilter}
           onChange={(e) => setPackageFilter(e.target.value)}
         >
-          <option value="">All packages</option>
+          <option value="">All cycles</option>
           {(packages.data ?? []).map((p) => (
             <option key={p.id} value={p.id}>
               {pkgId(p.displayId)} · {p.name}
@@ -202,11 +194,6 @@ export function PipelineView({ deepRunId = null }: { deepRunId?: string | null }
           </select>
         ) : null}
         <div className="esp-header-spacer" />
-        {canCreatePackage ? (
-          <button className="esp-btn esp-btn-secondary" onClick={() => setShowNewPackage(true)}>
-            + New package
-          </button>
-        ) : null}
         {canManageRuns ? (
           <button
             className="esp-btn esp-btn-primary"
@@ -309,18 +296,6 @@ export function PipelineView({ deepRunId = null }: { deepRunId?: string | null }
         />
       ) : null}
 
-      {showNewPackage ? (
-        <NewPackageModal
-          runs={runs.data ?? []}
-          onClose={() => setShowNewPackage(false)}
-          onCreated={(id) => {
-            setShowNewPackage(false);
-            setPackageFilter(id);
-            flash('Package created');
-          }}
-        />
-      ) : null}
-
       {toast ? <Toast message={toast} /> : null}
     </>
   );
@@ -357,7 +332,7 @@ function PackageHeader({
       <div className="esp-header-spacer" />
       {canApprove ? (
         <button className="esp-btn esp-btn-primary" onClick={onApprove}>
-          Review &amp; approve package
+          Review &amp; approve cycle
         </button>
       ) : null}
     </div>
@@ -501,95 +476,6 @@ function PackageCard({
   );
 }
 
-/** Bundle existing runs into a new package for end-to-end review. */
-function NewPackageModal({
-  runs,
-  onClose,
-  onCreated,
-}: {
-  runs: TestRunSummary[];
-  onClose: () => void;
-  onCreated: (packageId: string) => void;
-}) {
-  const createPackage = useCreatePackage();
-  const [name, setName] = useState('');
-  const [packageType, setPackageType] = useState<TestType>('REGRESSION');
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-
-  const toggle = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
-  const canCreate = name.trim().length > 0 && !createPackage.isPending;
-
-  return (
-    <Modal
-      title="New package"
-      maxWidth={460}
-      onClose={onClose}
-      footer={
-        <>
-          <button className="esp-btn esp-btn-secondary" onClick={onClose} disabled={createPackage.isPending}>
-            Cancel
-          </button>
-          <button
-            className="esp-btn esp-btn-primary"
-            disabled={!canCreate}
-            onClick={() =>
-              createPackage.mutate(
-                { name: name.trim(), packageType, runIds: [...selected] },
-                { onSuccess: (p) => onCreated(p.id) },
-              )
-            }
-          >
-            {createPackage.isPending ? 'Creating…' : `Create package (${selected.size})`}
-          </button>
-        </>
-      }
-    >
-      <p className="esp-muted" style={{ fontSize: 13, marginTop: 0 }}>
-        A package bundles several finished <strong>runs</strong> for one end-to-end review &amp; sign-off — e.g. a feature tested across departments. (To save a reusable set of <strong>test cases</strong>, use Suites in the Repository.)
-      </p>
-      <div className="esp-field">
-        <label className="esp-label">Package name</label>
-        <input
-          className="esp-input"
-          autoFocus
-          placeholder="e.g. June Release — End-to-end"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-      </div>
-      <div className="esp-field">
-        <label className="esp-label">Type</label>
-        <select className="esp-select" value={packageType} onChange={(e) => setPackageType(e.target.value as TestType)}>
-          {TEST_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {TEST_TYPE_LABELS[t]}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="esp-field" style={{ marginBottom: 0 }}>
-        <label className="esp-label">Runs to include ({selected.size})</label>
-        {runs.length === 0 ? (
-          <p className="esp-muted" style={{ fontSize: 13 }}>No runs yet — create runs from the Repository first.</p>
-        ) : (
-          <div style={{ maxHeight: '34vh', overflowY: 'auto', border: '1px solid var(--esp-border)', borderRadius: 'var(--esp-radius-sm)', padding: 6 }}>
-            {runs.map((r) => (
-              <label key={r.id} className="esp-pick-row">
-                <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
-                <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
-                <span className="esp-muted" style={{ fontSize: 12 }}>{r.environment} · {RUN_STAGE_LABEL[r.stage]}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
-    </Modal>
-  );
-}
+// NewPackageModal removed 2026-06-23 — cycles are created in the Repository ("Start
+// a cycle"), so the Pipeline no longer creates packages. The cycle.create path +
+// useCreatePackage remain for that flow.

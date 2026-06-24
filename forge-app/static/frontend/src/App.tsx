@@ -12,6 +12,7 @@ import { Logo } from './components/Logo';
 import { Icon } from './components/Icon';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { RepositoryView } from './features/repository/RepositoryView';
+import { AboutView } from './features/about/AboutView';
 
 // Lazy — keeps recharts (Dashboard) out of the initial bundle; each feature
 // view loads on first navigation.
@@ -25,16 +26,17 @@ const AdminView = lazy(() =>
   import('./features/admin/AdminView').then((m) => ({ default: m.AdminView })),
 );
 
-type View = 'repository' | 'runs' | 'dashboard' | 'admin';
+type View = 'repository' | 'runs' | 'dashboard' | 'admin' | 'about';
 
 const NAV: { key: View; label: string; adminOnly?: boolean }[] = [
   { key: 'repository', label: 'Repository' },
   { key: 'runs', label: 'Pipeline' },
   { key: 'dashboard', label: 'Dashboard' },
+  { key: 'about', label: 'About' },
   { key: 'admin', label: 'User Roles', adminOnly: true },
 ];
 
-const VIEWS: View[] = ['repository', 'runs', 'dashboard', 'admin'];
+const VIEWS: View[] = ['repository', 'runs', 'dashboard', 'admin', 'about'];
 
 /** Parse the URL hash into a view + optional entity id (e.g. "#repository/<caseId>"
  *  or "#dashboard"), so tabs AND specific test cases are linkable and survive a
@@ -130,6 +132,8 @@ export function App() {
             <PipelineView deepRunId={entityId} />
           ) : view === 'admin' ? (
             <AdminView />
+          ) : view === 'about' ? (
+            <AboutView />
           ) : (
             <DashboardView deepRunId={entityId} />
           )}

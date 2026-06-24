@@ -40,7 +40,7 @@ export function PackageApproval({
 
   return (
     <Modal
-      title={detail ? `${pkgId(detail.displayId)} · ${detail.name}` : 'Package approval'}
+      title={detail ? `${pkgId(detail.displayId)} · ${detail.name}` : 'Cycle approval'}
       onClose={onExit}
       footer={
         <button className="esp-btn esp-btn-secondary" onClick={onExit}>
@@ -65,16 +65,16 @@ export function PackageApproval({
               ? 'No runs executed yet'
               : counts.FAIL === 0 && counts.BLOCKED === 0
                 ? 'All executed runs passed'
-                : `${counts.FAIL} failing · ${counts.BLOCKED} blocked across the package`}
+                : `${counts.FAIL} failing · ${counts.BLOCKED} blocked across the cycle`}
           </h3>
           <div className="esp-muted" style={{ fontSize: 13, marginBottom: 14 }}>
             <strong>{passRate}% pass</strong> · {counts.PASS} passed · {counts.FAIL} failed · {counts.BLOCKED} blocked · {counts.remaining} not run
           </div>
 
-          <div className="esp-label" style={{ marginBottom: 6 }}>Runs in this package ({runs.length})</div>
+          <div className="esp-label" style={{ marginBottom: 6 }}>Runs in this cycle ({runs.length})</div>
           <div className="esp-list" style={{ marginBottom: 14 }}>
             {runs.length === 0 ? (
-              <div className="esp-empty">No runs in this package yet.</div>
+              <div className="esp-empty">No runs in this cycle yet.</div>
             ) : (
               runs.map((r) => (
                 <div key={r.id} className="esp-case-row" onClick={() => onOpenRun(r.id)} title="Open this run">

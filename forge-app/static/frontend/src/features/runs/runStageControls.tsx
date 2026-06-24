@@ -168,7 +168,7 @@ export function PackageApprovalPanel({
   if (!canSignOff) {
     return (
       <div className="esp-approval">
-        <strong style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="flag" /> Package ready for review</strong>
+        <strong style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="flag" /> Cycle ready for review</strong>
         <span className="esp-muted"> · awaiting sign-off from an approver.</span>
       </div>
     );
@@ -178,7 +178,7 @@ export function PackageApprovalPanel({
     return (
       <div className="esp-approval">
         <strong>Not ready to approve</strong>
-        <span className="esp-muted"> · no runs in this package are marked ready for approval yet.</span>
+        <span className="esp-muted"> · no runs in this cycle are marked ready for approval yet.</span>
       </div>
     );
   }
@@ -187,13 +187,13 @@ export function PackageApprovalPanel({
     if (!approver.trim()) return;
     signOff.mutate(
       { id: pkg.id, decision, approverName: approver, note: note.trim() || undefined },
-      { onSuccess: () => onDone(decision === 'APPROVED' ? 'Package approved' : 'Package sent back to testers') },
+      { onSuccess: () => onDone(decision === 'APPROVED' ? 'Cycle approved' : 'Cycle sent back to testers') },
     );
   };
 
   return (
     <div className="esp-approval">
-      <div className="esp-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}><Icon name="flag" size={12} /> Package sign-off</div>
+      <div className="esp-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}><Icon name="flag" size={12} /> Cycle sign-off</div>
       <div className="esp-grid-2" style={{ marginBottom: 8 }}>
         <input
           className="esp-input"
@@ -211,7 +211,7 @@ export function PackageApprovalPanel({
       />
       <div style={{ display: 'flex', gap: 8 }}>
         <button className="esp-btn esp-btn-primary" disabled={!approver.trim() || signOff.isPending} onClick={() => go('APPROVED')}>
-          {signOff.isPending ? 'Saving…' : <><Icon name="check" /> Approve package</>}
+          {signOff.isPending ? 'Saving…' : <><Icon name="check" /> Approve cycle</>}
         </button>
         <button className="esp-btn esp-btn-danger" disabled={!approver.trim() || signOff.isPending} onClick={() => go('REJECTED')}>
           <Icon name="x" /> Reject &amp; send back

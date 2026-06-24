@@ -320,8 +320,10 @@ export interface PackageDetail {
 }
 
 /** Render helper: PKG-1042 from displayId 1042. */
+// Renders a Cycle's human id, e.g. CY-7001. (The underlying entity/table is still
+// named "Package"; "Cycle" is the user-facing term — 2026-06-23.)
 export function pkgId(displayId: number): string {
-  return `PKG-${displayId}`;
+  return `CY-${displayId}`;
 }
 
 // ---------- suites (reusable, runnable case sets) ----------

@@ -1021,10 +1021,10 @@ class MockStore {
 
   private seedRunsAndUsers() {
     this.users = [
-      { subjectId: 'local-dev', displayName: 'Local Dev (mock)', email: 'dev@everstory.example', role: 'SUPER_ADMIN', updatedAt: '2026-06-01T09:00:00.000Z' },
-      { subjectId: uuid(), displayName: 'Mariah Khan', email: 'mkhan@everstory.example', role: 'TEST_MANAGER', updatedAt: '2026-06-01T09:00:00.000Z' },
-      { subjectId: uuid(), displayName: 'Dave Brodecki', email: 'dbrod@everstory.example', role: 'TEST_AUTHOR', updatedAt: '2026-06-01T09:00:00.000Z' },
-      { subjectId: uuid(), displayName: 'Vince Lizardi', email: 'vliza@everstory.example', role: 'FIELD_OPERATOR', updatedAt: '2026-06-01T09:00:00.000Z' },
+      { subjectId: 'local-dev', displayName: 'Sam Rivera', email: 'sam@northwind.example', role: 'SUPER_ADMIN', updatedAt: '2026-06-01T09:00:00.000Z' },
+      { subjectId: uuid(), displayName: 'Mariah Khan', email: 'mkhan@northwind.example', role: 'TEST_MANAGER', updatedAt: '2026-06-01T09:00:00.000Z' },
+      { subjectId: uuid(), displayName: 'Dave Brodecki', email: 'dbrod@northwind.example', role: 'TEST_AUTHOR', updatedAt: '2026-06-01T09:00:00.000Z' },
+      { subjectId: uuid(), displayName: 'Vince Lizardi', email: 'vliza@northwind.example', role: 'FIELD_OPERATOR', updatedAt: '2026-06-01T09:00:00.000Z' },
     ];
 
     // Run 1 — in progress regression, one failure with a defect.
@@ -1038,7 +1038,7 @@ class MockStore {
     if (run1Execs[0]?.steps[0]) {
       run1Execs[0].steps[0].attachments.push({
         id: uuid(),
-        filename: 'reserve-plot-confirmation.png',
+        filename: 'checkout-confirmation.png',
         contentType: 'image/png',
         sizeBytes: 70,
         dataBase64: DEMO_PNG,
@@ -1047,7 +1047,7 @@ class MockStore {
     }
     if (run1Execs[1]) {
       run1Execs[1].steps.forEach((s, i) => (s.status = i === run1Execs[1]!.steps.length - 1 ? 'FAIL' : 'PASS'));
-      run1Execs[1].defects.push({ id: uuid(), summary: 'Interment double-booking not blocked', description: 'Overlapping service was allowed.', severity: 'HIGH', createdAt: nowIso() });
+      run1Execs[1].defects.push({ id: uuid(), summary: 'Promo code can be applied more than once', description: 'Re-submitting the order re-applied the same promo, stacking the discount.', severity: 'HIGH', createdAt: nowIso() });
     }
     if (run1Execs[2]) run1Execs[2].steps.forEach((s, i) => (s.status = i === 0 ? 'PASS' : 'NOT_STARTED'));
 
@@ -1069,8 +1069,8 @@ class MockStore {
     const suiteCaseIds = this.cases.slice(0, 2).map((c) => c.id);
     if (suiteCaseIds.length > 0) {
       this.createSuite({
-        name: 'Cross-vendor smoke',
-        description: 'Quick reusable check across vendors.',
+        name: 'Checkout smoke',
+        description: 'Quick reusable check across the checkout flow.',
         caseIds: suiteCaseIds,
       });
     }
@@ -1098,12 +1098,12 @@ function normalizeJiraKeys(keys: string[] | undefined): string[] {
 
 /** Fake Jira backlog so "link a story" is demoable in the mock/preview build. */
 const MOCK_JIRA_ISSUES: JiraIssueSummary[] = [
-  { key: 'PLOT-1042', summary: 'Reserve an available plot for pre-need customers', issueType: 'Story', status: 'In Progress', url: '#' },
-  { key: 'PLOT-1108', summary: 'Interment scheduling must block double-booking', issueType: 'Story', status: 'To Do', url: '#' },
-  { key: 'PLOT-1190', summary: 'Payment plan setup for at-need contracts', issueType: 'Story', status: 'In Review', url: '#' },
-  { key: 'PLOT-1233', summary: 'Lawson GL export for daily settlements', issueType: 'Story', status: 'To Do', url: '#' },
-  { key: 'PLOT-1287', summary: 'Cross-vendor sale → payment end-to-end flow', issueType: 'Epic', status: 'In Progress', url: '#' },
-  { key: 'PLOT-1305', summary: 'Refund handling when a reservation is cancelled', issueType: 'Story', status: 'Done', url: '#' },
+  { key: 'NW-1042', summary: 'Guest checkout with a saved card', issueType: 'Story', status: 'In Progress', url: '#' },
+  { key: 'NW-1108', summary: 'Promo codes must not stack beyond their limit', issueType: 'Story', status: 'To Do', url: '#' },
+  { key: 'NW-1190', summary: 'Password reset via email link', issueType: 'Story', status: 'In Review', url: '#' },
+  { key: 'NW-1233', summary: 'Daily revenue batch export to the ledger', issueType: 'Story', status: 'To Do', url: '#' },
+  { key: 'NW-1287', summary: 'Sign-up → checkout → invoice end-to-end flow', issueType: 'Epic', status: 'In Progress', url: '#' },
+  { key: 'NW-1305', summary: 'Refund handling when an order is cancelled', issueType: 'Story', status: 'Done', url: '#' },
 ];
 
 function mockJiraSearch(query: string): JiraIssueSummary[] {
@@ -1138,15 +1138,17 @@ function buildSeed(): { folders: TestFolder[]; cases: TestCase[]; nextDisplayId:
     ...extra,
   });
 
-  const fPlotbox = f('PlotBox (PBX)', null, { vendorCode: 'PBX', order: 0 });
-  const fInterment = f('Plot & Interment', fPlotbox.id, { vendorCode: 'PBX', order: 0 });
-  const fPayments = f('Payments', fPlotbox.id, { vendorCode: 'PBX', order: 1 });
-  const fLawson = f('Lawson (LWS)', null, { vendorCode: 'LWS', order: 1 });
-  const fFinancials = f('Financials', fLawson.id, { vendorCode: 'LWS', order: 0 });
-  const fUat = f('Cross-vendor UAT', null, { order: 2 });
-  const folders = [fPlotbox, fInterment, fPayments, fLawson, fFinancials, fUat];
+  const fCheckout = f('Checkout', null, { order: 0 });
+  const fCart = f('Cart & payment', fCheckout.id, { order: 0 });
+  const fPromos = f('Promotions', fCheckout.id, { order: 1 });
+  const fAuth = f('Authentication', null, { order: 1 });
+  const fAccess = f('Sign-in & reset', fAuth.id, { order: 0 });
+  const fBilling = f('Billing', null, { order: 2 });
+  const fInvoices = f('Invoices & ledger', fBilling.id, { order: 0 });
+  const fUat = f('Release UAT', null, { order: 3 });
+  const folders = [fCheckout, fCart, fPromos, fAuth, fAccess, fBilling, fInvoices, fUat];
 
-  let displayId = 1041;
+  let displayId = 1000;
   const mk = (
     folderId: string,
     title: string,
@@ -1177,69 +1179,64 @@ function buildSeed(): { folders: TestFolder[]; cases: TestCase[]; nextDisplayId:
   });
 
   const cases: TestCase[] = [
-    mk(fInterment.id, 'Reserve an available plot for a pre-need customer', {
-      objective: 'Confirm a sales agent can reserve an unoccupied plot and the status flips to Reserved.',
-      preconditions: 'Agent logged in with sales permissions; at least one Available plot exists.',
+    mk(fCart.id, 'Complete a guest checkout with a saved card', {
+      objective: 'Confirm a guest can check out with a saved card and reach an order confirmation.',
+      preconditions: 'A product is in the cart; a valid test card is on file.',
       testType: 'MANUAL_FUNCTIONAL',
       priority: 'HIGH',
       status: 'ACTIVE',
-      vendors: ['PBX'],
-      labels: ['plot', 'sales'],
+      labels: ['checkout', 'payment'],
       steps: [
-        step(1, 'Search for an Available plot in the target cemetery and section.', 'Matching available plots are listed with map locations.'),
-        step(2, 'Select a plot and choose "Reserve".', 'Reservation form opens pre-filled with the plot identifier.', 'Customer: Jane Doe (pre-need)'),
-        step(3, 'Assign the customer and confirm the reservation.', 'Plot status changes to Reserved and appears under the customer record.'),
+        step(1, 'Add an item to the cart and proceed to checkout as a guest.', 'Checkout opens with the cart total and a payment section.'),
+        step(2, 'Choose the saved card and place the order.', 'Payment is authorized and the order is created.', 'Card: Visa •••• 4242'),
+        step(3, 'Review the order confirmation.', 'Confirmation shows the order number, items, and total paid.'),
       ],
     }),
-    mk(fInterment.id, 'Schedule an interment service for an occupied plot', {
-      objective: 'Verify interment scheduling blocks double-booking of the same plot/time.',
+    mk(fPromos.id, 'Apply a promo code at checkout', {
+      objective: 'Verify a valid promo applies once and cannot be stacked beyond its limit.',
       testType: 'REGRESSION',
       priority: 'CRITICAL',
       status: 'ACTIVE',
-      vendors: ['PBX'],
-      labels: ['interment', 'scheduling'],
+      labels: ['promo', 'checkout'],
       steps: [
-        step(1, 'Open an occupied plot with an existing reservation.', 'Plot detail shows the linked customer and contract.'),
-        step(2, 'Create an interment service overlapping an existing service.', 'System blocks the booking and shows a conflict warning.', 'Same plot, overlapping window'),
+        step(1, 'Enter a valid promo code at checkout.', 'Discount is applied and the order total updates.', 'Code: SAVE10'),
+        step(2, 'Re-submit the same code on the same order.', 'The code is rejected; the discount is not applied a second time.'),
       ],
     }),
-    mk(fPayments.id, 'Apply a deposit payment to a plot contract', {
-      objective: 'Ensure a partial deposit updates the contract balance correctly.',
+    mk(fAccess.id, 'Reset a password via the email link', {
+      objective: 'Ensure the password reset email link lets a user set a new password and sign in.',
       testType: 'MANUAL_FUNCTIONAL',
       priority: 'MEDIUM',
       status: 'ACTIVE',
-      vendors: ['PBX', 'CPA'],
-      labels: ['payments'],
+      labels: ['auth'],
       steps: [
-        step(1, 'Open a contract with an outstanding balance.', 'Balance and payment schedule are shown.'),
-        step(2, 'Record a deposit payment.', 'Balance decreases by the deposit; receipt is generated.', 'Amount: $500.00'),
+        step(1, 'Request a password reset for a known account.', 'A reset email is sent with a single-use link.'),
+        step(2, 'Open the link, set a new password, and sign in.', 'The new password works and the old one no longer does.'),
       ],
     }),
-    mk(fFinancials.id, 'Post a daily revenue batch to the GL', {
-      objective: 'Confirm the nightly revenue batch posts to the correct Lawson GL accounts.',
+    mk(fInvoices.id, 'Post a daily revenue batch to the ledger', {
+      objective: 'Confirm the nightly revenue batch posts to the correct ledger accounts.',
       testType: 'REGRESSION',
       priority: 'HIGH',
       status: 'DRAFT',
-      vendors: ['LWS'],
-      labels: ['gl', 'finance'],
+      labels: ['billing', 'finance'],
       steps: [
-        step(1, 'Trigger the daily revenue batch export.', 'Batch file is produced with the day’s transactions.'),
-        step(2, 'Import the batch into Lawson and review the GL posting.', 'Totals reconcile and post to the expected accounts.'),
+        step(1, 'Trigger the daily revenue batch export.', 'A batch file is produced with the day’s transactions.'),
+        step(2, 'Import the batch and review the ledger posting.', 'Totals reconcile and post to the expected accounts.'),
       ],
     }),
-    mk(fUat.id, 'End-to-end: sale → payment → interment scheduling', {
-      objective: 'Full happy-path across PlotBox and Lawson for a single customer.',
+    mk(fUat.id, 'End-to-end: sign up → checkout → invoice', {
+      objective: 'Full happy path for a new customer: create an account, buy, and get invoiced.',
       testType: 'UAT',
       priority: 'CRITICAL',
       status: 'ACTIVE',
-      vendors: ['PBX', 'LWS', 'CPA'],
       environments: ['STAGING'],
       labels: ['e2e', 'uat'],
       estimatedDurationMinutes: 45,
       steps: [
-        step(1, 'Create a new pre-need sale for a customer.', 'Contract is created in PlotBox.'),
-        step(2, 'Take a deposit and confirm it flows to Lawson financials.', 'Payment posts in both systems and reconciles.'),
-        step(3, 'Schedule the interment service.', 'Service is booked with no conflicts and notifications send.'),
+        step(1, 'Sign up for a new account.', 'Account is created and the user is signed in.'),
+        step(2, 'Add an item to the cart and complete checkout.', 'Order is placed and payment is captured.'),
+        step(3, 'Open the generated invoice.', 'Invoice matches the order and is downloadable.'),
       ],
     }),
   ];
@@ -1259,7 +1256,7 @@ export async function mockInvoke<T>(key: string, payload: Record<string, unknown
   const p = payload as Record<string, any>;
   switch (key) {
     case 'getContext':
-      return { accountId: 'local-dev', displayName: 'Local Dev (mock)', role: 'SUPER_ADMIN', mustChangePassword: false, currentIssueKey: null } as T;
+      return { accountId: 'local-dev', displayName: 'Sam Rivera', role: 'SUPER_ADMIN', mustChangePassword: false, currentIssueKey: null } as T;
 
     // repository
     case 'repo.getFolderTree':

@@ -12,6 +12,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "forge-app/static/frontend", "run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "frontend-web",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "VITE_API_MODE=web npm --prefix forge-app/static/frontend run dev -- --port 4319 --strictPort"],
+      "port": 4319
     }
   ]
 }

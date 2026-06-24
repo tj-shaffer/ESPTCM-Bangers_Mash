@@ -7,7 +7,7 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import Spinner from '@atlaskit/spinner';
 import { useAuth } from './context/AuthContext';
 import { ROLE_LABELS } from './api/permissions';
-import { STANDALONE, WEB_MODE } from './api/client';
+import { STANDALONE, WEB_MODE, DEMO_MODE, exitDemo } from './api/client';
 import { Logo } from './components/Logo';
 import { Icon } from './components/Icon';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
@@ -74,8 +74,8 @@ export function App() {
         <div className="esp-logo">
           <Logo size={34} />
           <div className="esp-brand-text">
-            <div className="esp-brand-name">Ever<b>story</b></div>
-            <div className="esp-brand-sub">Bangers &amp; Mash</div>
+            <div className="esp-brand-name">Bangers &amp; <b>Mash</b></div>
+            <div className="esp-brand-sub">by Second 9 Labs</div>
           </div>
         </div>
         <nav className="esp-nav">
@@ -90,7 +90,16 @@ export function App() {
           ))}
         </nav>
         <div className="esp-header-spacer" />
-        {STANDALONE ? (
+        {DEMO_MODE ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span className="esp-badge" style={{ background: 'var(--esp-orange-tint)', color: 'var(--esp-orange-strong)' }}>
+              Live demo · nothing is saved
+            </span>
+            <button className="esp-btn esp-btn-ghost" style={{ padding: '2px 8px' }} onClick={exitDemo}>
+              Exit demo
+            </button>
+          </span>
+        ) : STANDALONE ? (
           <span className="esp-badge" style={{ background: 'var(--esp-orange-tint)', color: 'var(--esp-orange-strong)' }}>
             Preview · mock data
           </span>
@@ -196,6 +205,18 @@ function AccountMenu({ onChangePassword }: { onChangePassword: () => void }) {
                 }}
               >
                 Change password
+              </button>
+            ) : DEMO_MODE ? (
+              <button
+                className="esp-btn esp-btn-ghost"
+                style={{ width: '100%', justifyContent: 'flex-start', marginTop: 4 }}
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  exitDemo();
+                }}
+              >
+                Exit demo
               </button>
             ) : (
               <div className="esp-muted" style={{ padding: '8px', fontSize: 12 }}>Preview — no account actions.</div>

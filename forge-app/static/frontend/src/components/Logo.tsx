@@ -1,12 +1,12 @@
 /**
- * Everstory brand mark (from the Intercompany Billing design): a blue-gradient
+ * Bangers & Mash brand mark (from the Intercompany Billing design): a blue-gradient
  * rounded tile with a white "spark" glyph and a warm-orange dot tucked into the
  * bottom-right corner. Fixed brand colours (a logo shouldn't invert in dark mode).
  */
 
 export function Logo({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 48 48" role="img" aria-label="Everstory">
+    <svg width={size} height={size} viewBox="0 0 48 48" role="img" aria-label="Bangers & Mash">
       <defs>
         <linearGradient id="bm-tile" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
           <stop offset="0" stopColor="#4F9BD9" />

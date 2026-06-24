@@ -4,9 +4,11 @@
  *   - WEB (VITE_API_MODE=web): HTTP to the Express/Neon API at /api/invoke,
  *     Bearer-token auth (the Vercel deployment). This is the pilot.
  *   - STANDALONE (anything else, e.g. `npm run dev`): the in-browser mock store
- *     — an offline UI preview with no backend. Note: the mock only implements
- *     the repository (`repo.*`) keys, so standalone mode surfaces just the
- *     Repository view (see App.tsx nav gating + mock/mockInvoke.ts).
+ *     — a full offline build of the product (Repository, Pipeline, Dashboard,
+ *     Users & Roles) with no backend (see mock/mockInvoke.ts).
+ *
+ * DEMO mode (see below) forces STANDALONE at runtime even in a `web` build, so
+ * one deployment can serve the marketing landing, a live demo, and real sign-in.
  *
  * The legacy Forge-bridge mode was removed with the rest of the Forge layer
  * (DECISIONS.md ADR-009); the app is a standalone web app, not a Forge app.
@@ -14,11 +16,56 @@
 
 import { mockInvoke } from '../mock/mockInvoke';
 
-const WEB = import.meta.env.VITE_API_MODE === 'web';
+const BUILD_WEB = import.meta.env.VITE_API_MODE === 'web';
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+
+// ---------- demo mode (runtime mock toggle) ----------
+// A `web` build normally talks to the real API. The public marketing site needs
+// a no-signup "live demo" from that SAME deployment, so a runtime flag forces
+// the in-browser mock even in a web build. It's set by the landing page's
+// "Try the live demo" button (enterDemo) or a ?demo=1 / #demo link, and kept for
+// the browser session.
+const DEMO_FLAG_KEY = 'tf_demo';
+
+function readDemoFlag(): boolean {
+  try {
+    const hash = window.location.hash.replace(/^#\/?/, '');
+    const wantsDemo = new URLSearchParams(window.location.search).get('demo') === '1' || hash === 'demo';
+    if (wantsDemo) sessionStorage.setItem(DEMO_FLAG_KEY, '1');
+    return sessionStorage.getItem(DEMO_FLAG_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+const DEMO = readDemoFlag();
+const WEB = BUILD_WEB && !DEMO;
 
 export const STANDALONE = !WEB;
 export const WEB_MODE = WEB;
+export const DEMO_MODE = DEMO;
+
+/** Enter the live demo: force mock mode for this session and reload into the app. */
+export function enterDemo(): void {
+  try {
+    sessionStorage.setItem(DEMO_FLAG_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+  window.location.hash = '';
+  window.location.reload();
+}
+
+/** Leave the demo and return to the marketing landing / sign-in. */
+export function exitDemo(): void {
+  try {
+    sessionStorage.removeItem(DEMO_FLAG_KEY);
+  } catch {
+    /* ignore */
+  }
+  window.location.hash = '';
+  window.location.reload();
+}
 
 // ---------- token + auth (web mode) ----------
 

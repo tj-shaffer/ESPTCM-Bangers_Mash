@@ -259,7 +259,7 @@ function AddUserForm({ onCreated }: { onCreated: (name: string) => void }) {
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="jane@everstory.com"
+          placeholder="name@company.com"
           required
         />
       </div>
